@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body {
+  background-color:#e5e5e5;
+  margin:0;
+  padding:0;
+}
+
+.container {
+  border:2px solid #e5e5e5;
+  border-radius:6px;
+  background-color:white;
+  padding-bottom:12px;
+  padding-top:12px;
+}
+
+.app {
+  display:inline-block;
+  width:72px;
+  text-align:center;
+}
+.app img {
+  margin:auto;
+  width:46px;
+  height:46px;
+  display:block;
+}
+.app .title {
+  font:0.8em "Lucida Grande",Tahoma,Arial,sans-serif
+}
+
+.intro {
+  font:bold 0.8em "Lucida Grande",Tahoma,Arial,sans-serif;
+  margin-bottom:8px;
+  margin-left:12px;
+}
+
+.searchbox {
+  width:444px;
+  margin-top:24px;
+  text-align:right;
+  display:block;
+}
+
+.searchbox input[type=text]
+{
+  border-radius:6px;
+  padding:4px;
+}
+
+.hidden {
+  display: none;
+}
+
+</style>
+<script src="jquery-1.4.4.min.js"></script>
+<script>
+$(function() {
+  var service = location.href.split('#')[1],
+      url = "http://localhost:8420/search_service/" + encodeURIComponent(service);
+
+  $.ajax({
+    url: url,
+    
+    success: function(data) {
+      var newNodes = [];
+      $.each(data, function(i) {
+          var info = data[i];
+          /* Create
+            <div class="app">
+              <a href="javascript:install(int)">
+                <img src="http://somewhere.png"/>
+              </a>
+              <div class="title">This cool app</div>
+            </div>
+          **/
+          var appDiv = document.createElement("div");
+          appDiv.setAttribute("id", "app-tab-" + i);
+          appDiv.classList.add("app");
+          var anchor = document.createElement("a");
+          anchor.setAttribute("id", "app-anchor-" + i);
+          anchor.setAttribute("href", "javascript:install(" + i + ")");
+          var insturl = info.manifestURL;
+          anchor.setAttribute("app_manifest_url", insturl);
+          var img = document.createElement("img");
+          img.setAttribute("src", info.iconURL);
+          anchor.appendChild(img);
+          appDiv.appendChild(anchor);
+          var titleDiv = document.createElement("div");
+          titleDiv.classList.add("title");
+          titleDiv.textContent = info.name;
+          appDiv.appendChild(titleDiv);
+          newNodes.push(appDiv);
+      });
+      $(".loading").addClass("hidden");
+      if (newNodes.length != 0) {
+        $(".hasapps").removeClass("hidden");
+        $("#apps").append(newNodes);
+      } else {
+        $(".hasnoapps").removeClass("hidden");
+      }
+    }
+  });
+});
+
+function install(index)
+{
+  var anchor = $("#app-anchor-" + index)[0];
+  var url = anchor.getAttribute("app_manifest_url");
+  try {
+    navigator.apps.install(
+    {
+      url:url,
+      hidePostInstallPrompt:true,
+      onsuccess: function(x)
+      {
+        //document.getElementById("status").innerHTML = "Success";      
+      },
+      onerror:function(x) {
+        document.getElementById("status").innerHTML = x.message;
+      
+      }
+    });
+  } catch (e) {
+    document.getElementById("status").innerHTML = e;
+  }
+}
+</script>
+<body>
+<div class="hasapps container hidden">
+
+<div class="intro">
+These services allow you to do stuff:
+</div>
+
+<div id="status"></div>
+
+<div id="apps"></div>
+
+<div class="searchbox">
+  <input type="text" value="Search all services...">
+</div>
+
+</div>
+
+<div class="hasnoapps container hidden">
+  <div class="intro">
+    There are no applications available for this service.
+  </div>
+</div>
+
+<div class="loading container">
+  <div class="intro">
+    Locating applications
+  </div>
+</div>
+
+</body>
+</html>

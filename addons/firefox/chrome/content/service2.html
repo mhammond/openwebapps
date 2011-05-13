@@ -355,7 +355,7 @@ function handleSetup(cmdRequest)
   // and then the "add services" tab
   svcDiv = createServiceTab(addServicesManifest);
   var serviceFinder = document.createElement("iframe");
-  serviceFinder.src = "http://localhost:8420/" + gRequestMethod + ".html";
+  serviceFinder.src = "serviceapps.html#" + gRequestMethod;
   serviceFinder.classList.add("serviceFrame");
   svcDiv.appendChild(serviceFinder);
   

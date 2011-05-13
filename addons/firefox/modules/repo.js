@@ -137,6 +137,8 @@ Repo = (function() {
         
         // chrome code can always do it:
         if (installOrigin == "chrome://openwebapps") return true;
+        // what is the difference between a chrome::// and resource:// origin?
+        if (installOrigin == "resource://openwebapps") return true;
         
         // XXX for demo purposes, we allow http://localhost:8420, which is where
         // the service directory is running.
@@ -251,8 +253,11 @@ Repo = (function() {
                             return;
                         }
                         
-                        // if this origin is whitelisted we can proceed without a confirmation
-                        if (installOrigin == "http://localhost:8420") {
+                        // if this origin is whitelisted or being installed 
+                        // directly by us, we can proceed without a confirmation
+                        var whitelisted = installOrigin == "http://localhost:8420";
+                        var byUs = installOrigin == "resource://openwebapps";
+                        if (whitelisted || byUs) {
                           installConfirmationFinish(true);
                         }
                         else 
