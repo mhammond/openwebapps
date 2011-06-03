@@ -70,19 +70,30 @@ serviceInvocationHandler.prototype = {
       frame.setAttribute("style", "width:484px;height:484px");
       xulPanel.appendChild(frame);
       doc.getElementById("mainPopupSet").appendChild(xulPanel);
-      
-      frame.setAttribute("src", "resource://openwebapps/chrome/content/service2.html");
-
       return [xulPanel, frame];
     },
     
-    show: function(panel) {
-      // TODO: steal sizeToContent from F1
-      if (panel.state == "closed") {
-          panel.sizeTo(500, 400);
-          let larry = this._window.document.getElementById('identity-box');
-          panel.openPopup(larry, "after_start", 8);
-      }
+    show: function(thePanelRecord) {
+      var anchor = thePanelRecord.anchor ||
+                   this._window.document.getElementById('identity-box');
+      var src = "resource://openwebapps/chrome/content/service2.html";
+      var iframe = thePanelRecord.iframe
+      var panel = thePanelRecord.panel;
+      // try and find a "provider app" for this service and use it as the src.
+      // We've abused the 'services' field for this, but that's probably wrong...
+      FFRepoImplService.findServices("provide." + thePanelRecord.methodName, function(serviceList) {
+        if (serviceList.length > 0) {
+          src = serviceList[0].url;
+        }
+        if (iframe.getAttribute("src") !== src) {
+          iframe.setAttribute("src", src);
+        }
+        // TODO: steal sizeToContent from F1
+        if (panel.state == "closed") {
+            panel.sizeTo(500, 400);
+            panel.openPopup(anchor, "after_start", 8);
+        }
+      });
     },
     
     observe: function(subject, topic, data) {
@@ -98,7 +109,7 @@ serviceInvocationHandler.prototype = {
       }
     },
     
-    invoke: function(contentWindowRef, methodName, args, successCB, errorCB) {
+    invoke: function(contentWindowRef, methodName, args, successCB, errorCB, anchor) {
       try {
         // Do we already have a panel for this content window?
         let thePanel, theIFrame, thePanelRecord;
@@ -119,7 +130,6 @@ serviceInvocationHandler.prototype = {
 
           this._popups.push( thePanelRecord );
         }
-        this.show(thePanel);
 
         // Update the content for the new invocation        
         thePanelRecord.contentWindow = contentWindowRef;
@@ -127,6 +137,8 @@ serviceInvocationHandler.prototype = {
         thePanelRecord.args = args;
         thePanelRecord.successCB = successCB;
         thePanelRecord.errorCB = errorCB; 
+        thePanelRecord.anchor = anchor;
+        this.show(thePanelRecord);
         //XX this memory is going to stick around for a long time; consider cleaning it up proactively
         
         this._updateContent(thePanelRecord);
