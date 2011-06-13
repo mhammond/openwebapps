@@ -41,6 +41,93 @@ const Ci = Components.interfaces;
 Cu.import("resource://openwebapps/modules/api.js");
 
 /**
+ A 'service' object as returned by createService
+**/
+var service = function(contentWindow, info) {
+  this.contentWindow = contentWindow;
+  this.origin = info.app;
+  this.manifest = info.manifest;
+  this.url = info.url;
+  this.frameId = info.frameId;
+  this.channel = null;
+  // Imagine an "onLoginChange" element callback...
+};
+
+service.prototype = {
+  call: function(args) {
+    if (!this.channel) {
+      var anIframe = this.contentWindow.document.getElementById(this.frameId);
+      // Hrmph - creating the channel from this chrome code is hard :(
+      // For now, we force the content itself to have a reference to
+      // jschannel.js and we just steal that reference.
+      // XXX - ACK - this might not be safe? :(
+      var contentChannel = this.contentWindow.wrappedJSObject.Channel;
+      /*  XXX - A probably much-less-safe way which also works.
+      var tmp = {window: contentWindow.wrappedJSObject,
+                 setTimeout: contentWindow.setTimeout};
+      var loader = Cc["@mozilla.org/moz/jssubscript-loader;1"]
+                 .getService(Ci.mozIJSSubScriptLoader);
+      loader.loadSubScript("resource://openwebapps/chrome/content/jschannel.js", tmp);
+      this.channel = Channel.build({
+      XXX - end of probably less-safe way ... */
+      var channel = contentChannel.build({
+        window: anIframe.contentWindow,
+        origin: this.url,
+        scope: "openwebapps_conduit"
+      });
+      // now wrap the channel up so when we use on behalf of the window
+      // we don't have chrome privs.
+      // XXX - is this correct?
+      this.channel = new XPCNativeWrapper(channel);
+    };
+    this.channel.call(args);
+  },
+
+  destroy: function() {
+    if (this.channel) {
+      this.channel.destroy();
+    }
+    // XXX - is this safe?  probably, as this.contentWindow is already
+    // an XPCNativeWrapper...
+    var anIframe = this.contentWindow.document.getElementById(this.frameId);
+    if (anIframe && anIframe.parentNode) {
+      anIframe.parentNode.removeChild(anIframe);
+    }
+  },
+
+  // Get the closest icon that is equal to or larger than the requested size,
+  // or the biggest icon below that if needed.
+  getIconForSize: function(targetSize) {
+    var icon;
+    if (this.manifest && this.manifest.icons) {
+      var bestFit = 0;
+      var biggestFallback = 0;
+      for (var z in this.manifest.icons) {
+          var size = parseInt(z, 10);
+          if (bestFit == 0 || size >= targetSize) {
+            bestFit = size;
+          }
+          if (biggestFallback == 0 || size > biggestFallback) {
+            biggestFallback = size;
+          }
+      }
+      if (bestFit !== 0)
+        icon = this.manifest.icons[bestFit];
+      else if (biggestFallback !== 0)
+        icon = this.manifest.icons[biggestFallback];
+    }
+    if (!icon) {
+      icon = "default_app.png";
+    } else {
+      if (!(icon.indexOf("data:") == 0)) {
+        icon = this.origin + icon;
+      }
+    }
+    return icon;
+  }
+};
+
+/**
  We create a service invocation panel when needed; there is at most one per
  tab, but the user can switch away from a tab while a service invocation
  dialog is still in progress.
@@ -156,8 +243,12 @@ serviceInvocationHandler.prototype = {
         if (!theIFrame.contentDocument || !theIFrame.contentDocument.getElementById("wrapper")) {
           let timeout = self._window.setTimeout(updateContentWhenWindowIsReady, 1000);
         } else {
-
-          // Ready to go: attach our response listener
+          // Ready to go...
+          // Inject an additional 'createService' method into our frame's window.
+          theIFrame.contentWindow.wrappedJSObject.navigator.apps.createService = function(info) {
+            return new service(theIFrame.contentWindow, info);
+          }
+          // attach our response listener
           theIFrame.contentDocument.addEventListener("message", function(event) {
             if (event.origin == "resource://openwebapps/service") {
               var msg = JSON.parse(event.data);
@@ -187,10 +278,11 @@ serviceInvocationHandler.prototype = {
             for (var i=0;i<serviceList.length;i++)
             {
               let svc = serviceList[i];
+              svc.frameId = "svc-frame-" + i;
               let frame = theIFrame.contentDocument.createElement("iframe");
               frame.src = svc.url;
               frame.classList.add("serviceFrame");
-              frame.setAttribute("id", "svc-frame-" + i);
+              frame.setAttribute("id", svc.frameId);
               theIFrame.contentDocument.getElementById("frame-garage").appendChild(frame);
               theIFrame.addEventListener("DOMContentLoaded", function(event) {
                 // XXX this should be a deterministic link based on the call to registerBuiltInApp

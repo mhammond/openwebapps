@@ -165,8 +165,7 @@ body {
 </style>
 <script>
 
-var gServiceList;
-var gServiceChannels = [];
+var gServiceList = [];
 var gRequestMethod;
 var gArguments;
 
@@ -183,34 +182,14 @@ function makeSuccessFunction(svc)
   }
 }
 
-// Get the closest icon that is equal to or larger than the requested size,
-// or the biggest icon below that if needed.
-function getIconForSize(minifest, targetSize) {
-
-  if (minifest && minifest.icons) {
-      var bestFit = 0;
-      var biggestFallback = 0;
-      for (var z in minifest.icons) {
-          var size = parseInt(z, 10);
-          if (bestFit == 0 || size >= targetSize) {
-            bestFit = size;
-          }
-          if (biggestFallback == 0 || size > biggestFallback) {
-            biggestFallback = size;
-          }
-      }
-      if (bestFit !== 0) return minifest.icons[bestFit];
-      if (biggestFallback !== 0) return minifest.icons[biggestFallback];
-  }
-  return "default_app.png";
-}
-
 function deleteOldChannels() {
-  for (var i=0;i<gServiceChannels.length;i++) {
-    gServiceChannels[i].destroy();
+  for (var i=0;i<gServiceList.length;i++) {
+    gServiceList[i].destroy();
   }
-  gServiceChannels = [];
-  $("#services").remove();// this will remove iframes from DOM
+  gServiceList = [];
+  // even though svc.destroy() deleted the iframe, it doesn't know to
+  // delete the tabs etc, so we must do that.
+  $("#services").remove();
 }
 
 function handleMessage(event)
@@ -292,7 +271,9 @@ function handleSetup(cmdRequest)
     siteID = siteID.substr(0, 50) + "...";
   }
   $("#siteID").text(siteID);*/
-  gServiceList = cmdRequest.serviceList;
+  cmdRequest.serviceList.forEach(function(info) {
+    gServiceList.push(navigator.apps.createService(info));
+  })
   gRequestMethod = cmdRequest.method;
   gArguments = cmdRequest.args;
   
@@ -307,10 +288,7 @@ function handleSetup(cmdRequest)
     svcTabLink.setAttribute("href", "#svc-tab-" + i);
     var svcTabImg = document.createElement("img");
     
-    var icon = getIconForSize(svc.manifest, 48);
-    if (!(icon.indexOf("data:") == 0)) {
-      icon = svc.app + icon;
-    }
+    var icon = svc.getIconForSize(48);
     svcTabImg.setAttribute("src", icon);
     svcTabImg.setAttribute("style", "width:48px;height:48px;vertical-align:middle");
     svcTabLink.appendChild(svcTabImg);
@@ -340,7 +318,7 @@ function handleSetup(cmdRequest)
     var svcDiv = createServiceTab(svc);
     
     // Retrieve and insert the iframe, which has been pre-positioned by chrome:
-    var anIframe = document.getElementById("svc-frame-" + i);
+    var anIframe = document.getElementById(svc.frameId);
     if (anIframe) svcDiv.appendChild(anIframe);
 
     // testing code:
@@ -353,7 +331,7 @@ function handleSetup(cmdRequest)
   }
   
   // and then the "add services" tab
-  svcDiv = createServiceTab(addServicesManifest);
+  svcDiv = createServiceTab(navigator.apps.createService(addServicesService));
   var serviceFinder = document.createElement("iframe");
   serviceFinder.src = "http://localhost:8420/" + gRequestMethod + ".html";
   serviceFinder.classList.add("serviceFrame");
@@ -369,15 +347,7 @@ function createChannels(cmdRequest)
   {
     var svc = gServiceList[i];
     try {
-      var anIframe = document.getElementById("svc-frame-" + i);
-      
-      var chan = Channel.build({
-          window: anIframe.contentWindow,
-          origin: svc.url,
-          scope: "openwebapps_conduit"
-      });
-      
-      chan.call({
+      svc.call({
           method: gRequestMethod,
           params: gArguments,
           success: function() {}, /* perhaps record the fact that it worked? */
@@ -390,19 +360,17 @@ function createChannels(cmdRequest)
                                  JSON.stringify(messageData),  // data
                                  "resource://openwebapps/service", "", window); // origin, source
             document.dispatchEvent(msg);
-            
           }}())
       });    
-      gServiceChannels.push(chan);
     } catch (e) {
-      dump("Warning: unable to create channel to " + svc.url + ": " + e + "\n");
+      dump("Warning: unable to initialize " + svc.url + ": " + e + "\n");
     }
   }
 }
 window.addEventListener("message", handleMessage, false);
 
 
-var addServicesManifest =
+var addServicesService =
 {
   manifest: {
     name: "Add service",
@@ -453,10 +421,10 @@ if (this.location.href.indexOf("file:///") == 0)
 function confirm()
 {
   var selected = $("#services").tabs('option', 'selected'); // => 0
-  gServiceChannels[selected].call({
+  gServiceList[selected].call({
     method: "confirm",
     success: function(result) {
-      var messageData = {app:gServiceList[selected].app, cmd:"result", result:result};
+      var messageData = {app:gServiceList[selected].origin, cmd:"result", result:result};
       var msg = document.createEvent("MessageEvent");
       msg.initMessageEvent("message", // type
                            true, true, // bubble, cancelable
