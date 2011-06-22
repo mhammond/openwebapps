@@ -38,6 +38,8 @@
 const {Cu, Ci, Cc} = require("chrome"); 
 var {FFRepoImplService} = require("api");
 
+var methodHandlers = {}; // url of mediator for a supported services
+
 /**
  We create a service invocation panel when needed; there is at most one per
  tab, but the user can switch away from a tab while a service invocation
@@ -69,20 +71,41 @@ serviceInvocationHandler.prototype = {
       xulPanel.appendChild(frame);
       doc.getElementById("mainPopupSet").appendChild(xulPanel);
       
-      frame.setAttribute("src", require("self").data.url("service2.html"));
-
       return [xulPanel, frame];
     },
-    
-    show: function(panel) {
+
+    registerMethodHandler: function(methodName, url) {
+      // this is conceptually a 'static' method - once called it will affect
+      // all future instances of the serviceInvocationHandler.
+      methodHandlers[methodName] = url;
+    },
+
+    show: function(panelRecord) {
+      var {panel, iframe, methodName, mediatorargs} = panelRecord;
+      var url = methodHandlers[methodName];
+      if (!url) {
+        // use the default mediator.
+        url = require("self").data.url("service2.html")
+      }
+      if (!iframe.getAttribute("src") != url) {
+        iframe.setAttribute("src", url)
+      }
       // TODO: steal sizeToContent from F1
       if (panel.state == "closed") {
           panel.sizeTo(500, 400);
-          let larry = this._window.document.getElementById('identity-box');
-          panel.openPopup(larry, "after_start", 8);
+          let anchor;
+          if (mediatorargs && mediatorargs.anchor)
+            anchor = mediatorargs.anchor;
+          if (!anchor) {
+            anchor = this._window.document.getElementById('identity-box');
+          }
+          panel.openPopup(anchor, "after_start", 8);
+      }
+      if (mediatorargs && mediatorargs.onshow) {
+        mediatorargs.onshow(iframe);
       }
     },
-    
+
     observe: function(subject, topic, data) {
       if (topic == "openwebapp-installed")
       {
@@ -180,7 +203,7 @@ serviceInvocationHandler.prototype = {
         });
     },
 
-    invoke: function(contentWindowRef, methodName, args, successCB, errorCB) {
+    invoke: function(contentWindowRef, methodName, args, successCB, errorCB, mediatorargs) {
       try {
         // Do we already have a panel for this content window?
         let thePanel, theIFrame, thePanelRecord;
@@ -203,14 +226,15 @@ serviceInvocationHandler.prototype = {
 
           this._popups.push( thePanelRecord );
         }
-        this.show(thePanel);
-
         // Update the content for the new invocation        
         thePanelRecord.contentWindow = contentWindowRef;
         thePanelRecord.methodName = methodName;
         thePanelRecord.args = args;
         thePanelRecord.successCB = successCB;
         thePanelRecord.errorCB = errorCB; 
+        thePanelRecord.mediatorargs = mediatorargs;
+        this.show(thePanelRecord);
+
         //XX this memory is going to stick around for a long time; consider cleaning it up proactively
         
         this._updateContent(thePanelRecord);
@@ -245,6 +269,15 @@ serviceInvocationHandler.prototype = {
           theIFrame.contentDocument.wrappedJSObject.addEventListener("message", function(event) {
             if (event.origin == "resource://openwebapps/service") {
               var msg = JSON.parse(event.data);
+              // first see if our mediator wants to handle or mutate this.
+              let mediatorargs = thePanelRecord.mediatorargs;
+              if (mediatorargs && mediatorargs.onresult) {
+                try {
+                  msg = mediatorargs.onresult(msg) || {cmd: ''};
+                } catch (ex) {
+                  console.error("mediator callback", msg.cmd, "failed:", ex, ex.stack);
+                }
+              }
               if (msg.cmd == "result") {
                 try {
                   thePanel.hidePopup();
