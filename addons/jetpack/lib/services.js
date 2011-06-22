@@ -238,7 +238,7 @@ serviceInvocationHandler.prototype = {
       function updateContentWhenWindowIsReady()
       {
 //        let theIFrame = theIFrame.wrappedJSObject;
-        if (!theIFrame.contentDocument || !theIFrame.contentDocument.getElementById("wrapper")) {
+        if (theIFrame.contentDocument.readyState !== "complete") {
           let timeout = self._window.setTimeout(updateContentWhenWindowIsReady, 1000);
         } else {
           // Ready to go: attach our response listener
