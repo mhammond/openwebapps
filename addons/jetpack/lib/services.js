@@ -38,7 +38,8 @@
 const {Cu, Ci, Cc} = require("chrome"); 
 var {FFRepoImplService} = require("api");
 
-var methodHandlers = {}; // url of mediator for a supported services
+// a callback to create mediator args, keyed by service ID.
+var mediatorCreators = {};
 
 /**
  We create a service invocation panel when needed; there is at most one per
@@ -74,19 +75,17 @@ serviceInvocationHandler.prototype = {
       return [xulPanel, frame];
     },
 
-    registerMethodHandler: function(methodName, url) {
+    registerMediator: function(methodName, callback) {
       // this is conceptually a 'static' method - once called it will affect
       // all future instances of the serviceInvocationHandler.
-      methodHandlers[methodName] = url;
+      mediatorCreators[methodName] = callback;
     },
 
     show: function(panelRecord) {
       var {panel, iframe, methodName, mediatorargs} = panelRecord;
-      var url = methodHandlers[methodName];
-      if (!url) {
-        // use the default mediator.
-        url = require("self").data.url("service2.html")
-      }
+      var url = mediatorargs && mediatorargs.url
+                ? mediatorargs.url
+                : require("self").data.url("service2.html");
       if (!iframe.getAttribute("src") != url) {
         iframe.setAttribute("src", url)
       }
@@ -226,13 +225,14 @@ serviceInvocationHandler.prototype = {
 
           this._popups.push( thePanelRecord );
         }
-        // Update the content for the new invocation        
+        // Update the content for the new invocation
+        var ma = mediatorCreators[methodName] ? mediatorCreators[methodName]() : undefined;
+        thePanelRecord.mediatorargs = ma;
         thePanelRecord.contentWindow = contentWindowRef;
         thePanelRecord.methodName = methodName;
-        thePanelRecord.args = args;
+        thePanelRecord.args = (ma && ma.updateargs) ? ma.updateargs(args) : args;
         thePanelRecord.successCB = successCB;
-        thePanelRecord.errorCB = errorCB; 
-        thePanelRecord.mediatorargs = mediatorargs;
+        thePanelRecord.errorCB = errorCB;
         this.show(thePanelRecord);
 
         //XX this memory is going to stick around for a long time; consider cleaning it up proactively
