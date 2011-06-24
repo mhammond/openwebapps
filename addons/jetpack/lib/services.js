@@ -86,7 +86,7 @@ serviceInvocationHandler.prototype = {
       var url = mediatorargs && mediatorargs.url
                 ? mediatorargs.url
                 : require("self").data.url("service2.html");
-      if (!iframe.getAttribute("src") != url) {
+      if (iframe.getAttribute("src") != url) {
         iframe.setAttribute("src", url)
       }
       // TODO: steal sizeToContent from F1
@@ -99,7 +99,17 @@ serviceInvocationHandler.prototype = {
             anchor = this._window.document.getElementById('identity-box');
           }
           panel.openPopup(anchor, "after_start", 8);
+          if (mediatorargs && mediatorargs.onhide) {
+            let onhidden = function() {
+              panel.removeEventListener("popuphidden", onhidden, false);
+              mediatorargs.onhide(iframe);
+            }
+            panel.addEventListener("popuphidden", onhidden, false);
+          }
       }
+      // We re-call the onshow method even if it was previously opened
+      // because the url might have changed (ie, we may be using a different
+      // mediator than last time)
       if (mediatorargs && mediatorargs.onshow) {
         mediatorargs.onshow(iframe);
       }
@@ -226,7 +236,7 @@ serviceInvocationHandler.prototype = {
           this._popups.push( thePanelRecord );
         }
         // Update the content for the new invocation
-        var ma = mediatorCreators[methodName] ? mediatorCreators[methodName]() : undefined;
+        let ma = mediatorCreators[methodName] ? mediatorCreators[methodName]() : undefined;
         thePanelRecord.mediatorargs = ma;
         thePanelRecord.contentWindow = contentWindowRef;
         thePanelRecord.methodName = methodName;
@@ -295,7 +305,12 @@ serviceInvocationHandler.prototype = {
             }
           }, false);
           
-          // Send reconfigure event
+          // Send an initialize event before touching the iframes etc so the
+          // page can delete existing ones etc.
+          theIFrame.contentWindow.wrappedJSObject.handleAdminPostMessage(
+              JSON.stringify({cmd:"init", method:methodName,
+                              caller:contentWindowRef.location.href}));
+
           thePanel.successCB = successCB;
           thePanel.errorCB = errorCB;
           
