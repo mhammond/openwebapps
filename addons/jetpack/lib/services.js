@@ -55,6 +55,7 @@ function serviceInvocationHandler(win)
 
     let observerService = Cc["@mozilla.org/observer-service;1"].getService(Ci.nsIObserverService);
     observerService.addObserver(this, "openwebapp-installed", false);
+    observerService.addObserver(this, "openwebapp-uninstalled", false);
 }
 serviceInvocationHandler.prototype = {
 
@@ -116,7 +117,7 @@ serviceInvocationHandler.prototype = {
     },
 
     observe: function(subject, topic, data) {
-      if (topic == "openwebapp-installed")
+      if (topic === "openwebapp-installed" || topic === "openwebapp-uninstalled")
       {
         // let our panels know, if they are visible
         for each (let popupCheck in this._popups) {
