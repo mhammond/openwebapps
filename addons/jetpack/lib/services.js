@@ -213,7 +213,7 @@ serviceInvocationHandler.prototype = {
         });
     },
 
-    invoke: function(contentWindowRef, methodName, args, successCB, errorCB, mediatorargs) {
+    invoke: function(contentWindowRef, methodName, args, successCB, errorCB) {
       try {
         // Do we already have a panel for this content window?
         let thePanel, theIFrame, thePanelRecord;
