@@ -276,36 +276,40 @@ serviceInvocationHandler.prototype = {
         if (theIFrame.contentDocument.readyState !== "complete") {
           let timeout = self._window.setTimeout(updateContentWhenWindowIsReady, 1000);
         } else {
-          // Ready to go: attach our response listener
-          theIFrame.contentDocument.wrappedJSObject.addEventListener("message", function(event) {
-            if (event.origin == "resource://openwebapps/service") {
-              var msg = JSON.parse(event.data);
-              // first see if our mediator wants to handle or mutate this.
-              let mediatorargs = thePanelRecord.mediatorargs;
-              if (mediatorargs && mediatorargs.onresult) {
-                try {
-                  msg = mediatorargs.onresult(msg) || {cmd: ''};
-                } catch (ex) {
-                  console.error("mediator callback", msg.cmd, "failed:", ex, ex.stack);
+          // Ready to go: attach our response listener if we haven't already
+          // (eg, on reconfigure events we get here twice...)
+          if (!thePanelRecord.haveAddedListener) {
+            theIFrame.contentDocument.wrappedJSObject.addEventListener("message", function(event) {
+              if (event.origin == "resource://openwebapps/service") {
+                var msg = JSON.parse(event.data);
+                // first see if our mediator wants to handle or mutate this.
+                let mediatorargs = thePanelRecord.mediatorargs;
+                if (mediatorargs && mediatorargs.onresult) {
+                  try {
+                    msg = mediatorargs.onresult(msg) || {cmd: ''};
+                  } catch (ex) {
+                    console.error("mediator callback", msg.cmd, "failed:", ex, ex.stack);
+                  }
                 }
-              }
-              if (msg.cmd == "result") {
-                try {
-                  thePanel.hidePopup();
-                  successCB(event.data);
-                } catch (e) {
-                  dump(e + "\n");
+                if (msg.cmd == "result") {
+                  try {
+                    thePanel.hidePopup();
+                    successCB(event.data);
+                  } catch (e) {
+                    dump(e + "\n");
+                  }
+                } else if (msg.cmd == "error") {
+                  dump(event.data + "\n");
+                } else if (msg.cmd == "reconfigure") {
+                  dump("services.js: Got a reconfigure event\n");
+                  self._updateContent(thePanelRecord);
                 }
-              } else if (msg.cmd == "error") {
-                dump(event.data + "\n");
-              } else if (msg.cmd == "reconfigure") {
-                dump("services.js: Got a reconfigure event\n");
-                self._updateContent(contentWindowRef, thePanel, theIFrame, methodName, args, successCB, errorCB);
+              } else {
               }
-            } else {
-            }
-          }, false);
-          
+            }, false);
+            thePanelRecord.haveAddedListener = true;
+          };
+
           // Send an initialize event before touching the iframes etc so the
           // page can delete existing ones etc.
           theIFrame.contentWindow.wrappedJSObject.handleAdminPostMessage(
