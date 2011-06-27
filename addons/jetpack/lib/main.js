@@ -119,13 +119,10 @@ function openwebapps(win, getUrlCB)
             let origin = url.URLParse(browser.currentURI.spec)
                 .originOnly().toString();
 
-            self._repo.list(function(apps) {
-                for (let app in apps) {
-                    if (app == origin) {
-                        self._repo.launch(origin, browser.currentURI.spec);
-                        self._window.gBrowser.removeTab(e.target);
-                        break;
-                    }
+            self._repo.getAppByUrl(origin, function(app) {
+                if (app) {
+                    self._repo.launch(origin, browser.currentURI.spec);
+                    self._window.gBrowser.removeTab(e.target);
                 }
             });
         }, 500, e);
@@ -183,7 +180,7 @@ openwebapps.prototype = {
             apibase: "navigator.apps.services", name: "ready", script: null,
             getapi: function(contentWindowRef) {
                 return function(args) {
-                    self._services.initApp(contentWindowRef);
+                    self._services.initApp(contentWindowRef.wrappedJSObject);
                 }
             }
         });
@@ -192,7 +189,7 @@ openwebapps.prototype = {
             apibase: "navigator.apps.services", name: "registerHandler", script: null,
             getapi: function(contentWindowRef) {
                 return function(activity, message, func) {
-                    self._services.registerServiceHandler(contentWindowRef, activity, message, func);
+                    self._services.registerServiceHandler(contentWindowRef.wrappedJSObject, activity, message, func);
                 }
             }
         });
@@ -319,7 +316,7 @@ openwebapps.prototype = {
 
                 let href = aEvent.target.href;
                 let page = url.URLParse(aEvent.target.baseURI);
-                page = page.originOnly().toString();
+                page = page.normalize().originOnly().toString();
 
                 if (!simple.storage.links[page]) {
                     // XXX: Should we restrict the href to be associated in
@@ -335,7 +332,7 @@ openwebapps.prototype = {
                 // manually call UI hook because tabs.on('activate') will
                 // not be called for this page
                 let cUrl = url.URLParse(tabs.activeTab.url);
-                cUrl = cUrl.originOnly().toString();
+                cUrl = cUrl.normalize().originOnly().toString();
 
                 if (cUrl == page)
                     self.offerInstallIfNeeded(page);
@@ -346,18 +343,11 @@ openwebapps.prototype = {
     // TODO: Don't be so annoying and display the offer everytime the app site
     // is visited. If the user says 'no', don't display again for the session
     offerInstallIfNeeded: function(origin) {
-        let toInstall = true;
-        this._repo.list(function(apps) {
-            for (let app in apps) {
-                if (app == origin) {
-                    toInstall = false;
-                    break;
-                }
-            }
+        let self = this;
+        this._repo.getAppByUrl(origin, function(app) {
+            if (!app)
+                self._ui._showPageHasApp(origin);
         });
-
-        if (toInstall)
-            this._ui._showPageHasApp(origin);
     },
 
     registerBuiltInApp: function(domain, app, injector) {

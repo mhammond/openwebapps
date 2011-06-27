@@ -140,6 +140,7 @@ serviceInvocationHandler.prototype = {
             
             // we invoke the login one if it's supported
             if (app.services && app.services.login) {
+                // FIXME: what do we do with tons of IFRAMEs? Do they all get the login message?
                 self.invokeService(contentWindowRef, 'login', 'doLogin', {'credentials' : null}, function(result) {
                     // if result is status ok, we're good
                     if (result.status == 'ok') {
@@ -167,7 +168,6 @@ serviceInvocationHandler.prototype = {
     registerServiceHandler: function(contentWindowRef, activity, message, func) {
         // check that this is indeed an app
         FFRepoImplService.getAppByUrl(contentWindowRef.location, function(app) {
-            console.log("pre-register");
             if (!app) return;
 
             // make sure the app supports this activity
@@ -176,7 +176,7 @@ serviceInvocationHandler.prototype = {
                 return;
             }
             
-            console.log("Registering handler for " + app.origin + " " + activity + " / " + message);
+            //console.log("Registering handler for " + app.origin + " " + activity + " / " + message);
 
             // do we need to unwrap it?
             var theWindow = contentWindowRef;

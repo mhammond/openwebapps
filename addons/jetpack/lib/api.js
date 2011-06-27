@@ -335,16 +335,19 @@ FFRepoImpl.prototype = {
                         // else, reload the page with the new URL?
                         if (url != brs.currentURI.spec) {
                             if (app.services && app.services['link.transition']) {
-                                var services = require("./services");
-                                var serviceInterface = new services.serviceInvocationHandler(browserWin);
-                                serviceInterface.invokeService(brs.contentWindow.wrappedJSObject,
-                                                               'link.transition', 'transition',
-                                                               {'url' : url},
-                                                               function(result) {});
+                                try {
+                                    var services = require("./services");
+                                    var serviceInterface = new services.serviceInvocationHandler(browserWin);
+                                    serviceInterface.invokeService(brs.contentWindow.wrappedJSObject,
+                                                                   'link.transition', 'transition',
+                                                                   {'url' : url},
+                                                                   function(result) {});
+                                } catch (e) {
+                                    console.log(e);
+                                }
                             } else {
                                 brs.loadURI(url, null, null); // Referrer is broken
                             }
-                            console.log("sent");
                         }
 
                         found = true;
