@@ -83,6 +83,8 @@ serviceInvocationHandler.prototype = {
     },
 
     show: function(panelRecord) {
+      // NOTE: it is possible a popup for another service is already showing -
+      // we should check for this and hide them.
       var {panel, iframe, methodName, mediatorargs} = panelRecord;
       var url = mediatorargs && mediatorargs.url
                 ? mediatorargs.url
@@ -215,10 +217,10 @@ serviceInvocationHandler.prototype = {
 
     invoke: function(contentWindowRef, methodName, args, successCB, errorCB) {
       try {
-        // Do we already have a panel for this content window?
+        // Do we already have a panel for this service for this content window?
         let thePanel, theIFrame, thePanelRecord;
         for each (let popupCheck in this._popups) {
-          if (contentWindowRef == popupCheck.contentWindow) {
+          if (contentWindowRef == popupCheck.contentWindow && methodName == popupCheck.methodName) {
             thePanel = popupCheck.panel;
             theIFrame = popupCheck.iframe;
             thePanelRecord = popupCheck;
@@ -226,15 +228,34 @@ serviceInvocationHandler.prototype = {
           }
         }
         // If not, go create one
-        // TEMPORARY: always create panel for debugging
-        //if (!thePanel) {
-        if (1) {
+        if (!thePanel) {
           let tmp = this._createPopupPanel();
           thePanel = tmp[0];
           theIFrame = tmp[1];
           thePanelRecord =  { contentWindow: contentWindowRef, panel: thePanel, iframe: theIFrame} ;
-
           this._popups.push( thePanelRecord );
+          // add an unload listener so we can nuke this popup info as the window closes.
+          let self = this;
+          contentWindowRef.addEventListener("unload", function(evt) {
+            // nuke any popups targetting this window.
+            // XXX - this probably needs tweaking - what if the app is still
+            // "working" as the user navigates away from the page?  Currently
+            // there is no reasonable way to detect this though.
+            let newPopups = [];
+            for each (let popupCheck in self._popups) {
+              if (contentWindowRef === evt.currentTarget) {
+                // this popup record must die.
+                let nukePanel = popupCheck.panel;
+                if (nukePanel.state !== "closed") {
+                  nukePanel.hidePopup();
+                }
+              } else {
+                newPopups.push(popupCheck);
+              }
+            }
+            console.log("window closed - had", self._popups.length, "popups, now have", newPopups.length);
+            self._popups = newPopups;
+            }, false);
         }
         // Update the content for the new invocation
         let ma = mediatorCreators[methodName] ? mediatorCreators[methodName]() : undefined;
@@ -367,6 +388,7 @@ serviceInvocationHandler.prototype = {
       let nId = "openwebapp-error-" + methodName;
       let nBox = this._window.gBrowser.getNotificationBox();
       let notification = nBox.getNotificationWithValue(nId);
+      let message = mediatorargs.notificationErrorText || "Houston, we have app roblem";
       let self = this;
       // Check that we aren't already displaying our notification
       if (!notification) {
@@ -380,9 +402,7 @@ serviceInvocationHandler.prototype = {
             }, 0);
           }
         }];
-        nBox.appendNotification(mediatorargs.notificationErrorText,
-                                nId,
-                                null,
+        nBox.appendNotification(message, nId, null,
                                 nBox.PRIORITY_WARNING_MEDIUM, buttons);
       }
     },
