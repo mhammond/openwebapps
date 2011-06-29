@@ -261,7 +261,11 @@ serviceInvocationHandler.prototype = {
       // 1. What method is being invoked (and maybe some nice explanatory text)
       // 2. Which services can provide that method, along with their icons and iframe URLs
       // 3. Where to return messages to once it gets confirmation (that would be this)
-      
+
+      // If there was an error we are about to destroy the context for the
+      // error, so hide any notifications.
+      this._hideErrorNotification(thePanelRecord);
+
       // Hang on, the window may not be fully loaded yet
       let self = this;
       let { methodName, args, successCB, errorCB } = thePanelRecord;
@@ -300,6 +304,11 @@ serviceInvocationHandler.prototype = {
                   }
                 } else if (msg.cmd == "error") {
                   dump(event.data + "\n");
+                  // Show the error box - it might be better to only show it
+                  // if the panel is not showing, but OTOH, the panel might
+                  // have been closed just as the error was being rendered
+                  // in the panel - so for now we always show it.
+                  self._showErrorNotification(thePanelRecord);
                 } else if (msg.cmd == "reconfigure") {
                   dump("services.js: Got a reconfigure event\n");
                   self._updateContent(thePanelRecord);
@@ -351,6 +360,41 @@ serviceInvocationHandler.prototype = {
         }
       }
       updateContentWhenWindowIsReady();
+    },
+
+    _showErrorNotification: function(thePanelRecord) {
+      let { methodName, contentWindow, mediatorargs } = thePanelRecord;
+      let nId = "openwebapp-error-" + methodName;
+      let nBox = this._window.gBrowser.getNotificationBox();
+      let notification = nBox.getNotificationWithValue(nId);
+      let self = this;
+      // Check that we aren't already displaying our notification
+      if (!notification) {
+        buttons = [{
+          label: "try again",
+          accessKey: null,
+          callback: function () {
+            self._window.setTimeout(function () {
+              self.show(thePanelRecord);
+              self._updateContent(thePanelRecord);
+            }, 0);
+          }
+        }];
+        nBox.appendNotification(mediatorargs.notificationErrorText,
+                                nId,
+                                null,
+                                nBox.PRIORITY_WARNING_MEDIUM, buttons);
+      }
+    },
+
+    _hideErrorNotification: function(thePanelRecord) {
+      let { methodName } = thePanelRecord;
+      let nId = "openwebapp-error-" + methodName;
+      let nb = this._window.gBrowser.getNotificationBox();
+      let notification = nb.getNotificationWithValue(nId);
+      if (notification) {
+        nb.removeNotification(notification);
+      }
     }
 };
 
