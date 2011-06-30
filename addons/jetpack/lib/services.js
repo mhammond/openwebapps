@@ -116,16 +116,22 @@ serviceInvocationHandler.prototype = {
       if (mediatorargs && mediatorargs.onshow) {
         mediatorargs.onshow(iframe);
       }
+      if (!panelRecord.isConfigured) {
+        this._updateContent(panelRecord)
+        panelRecord.isConfigured = true;
+      }
     },
 
     observe: function(subject, topic, data) {
       if (topic === "openwebapp-installed" || topic === "openwebapp-uninstalled")
       {
-        // let our panels know, if they are visible
+        // All visible panels need to be reconfigured now, while invisible
+        // ones can wait until they are re-shown.
         for each (let popupCheck in this._popups) {
-          if (popupCheck.panel.state != "closed")
-          {
+          if (popupCheck.panel.state != "closed") {
             this._updateContent(popupCheck);
+          } else {
+            popupCheck.isConfigured = false;
           }
         }
       }
@@ -232,7 +238,9 @@ serviceInvocationHandler.prototype = {
           let tmp = this._createPopupPanel();
           thePanel = tmp[0];
           theIFrame = tmp[1];
-          thePanelRecord =  { contentWindow: contentWindowRef, panel: thePanel, iframe: theIFrame} ;
+          thePanelRecord =  { contentWindow: contentWindowRef, panel: thePanel,
+                              iframe: theIFrame, isConfigured: false} ;
+
           this._popups.push( thePanelRecord );
           // add an unload listener so we can nuke this popup info as the window closes.
           let self = this;
@@ -269,7 +277,6 @@ serviceInvocationHandler.prototype = {
 
         //XX this memory is going to stick around for a long time; consider cleaning it up proactively
         
-        this._updateContent(thePanelRecord);
         } catch (e) {
           dump(e + "\n");
           dump(e.stack + "\n");
