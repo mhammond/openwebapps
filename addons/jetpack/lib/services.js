@@ -38,6 +38,9 @@
 const {Cu, Ci, Cc} = require("chrome"); 
 var {FFRepoImplService} = require("api");
 
+// a callback to create mediator args, keyed by service ID.
+var mediatorCreators = {};
+
 /**
  We create a service invocation panel when needed; there is at most one per
  tab, but the user can switch away from a tab while a service invocation
@@ -52,6 +55,7 @@ function serviceInvocationHandler(win)
 
     let observerService = Cc["@mozilla.org/observer-service;1"].getService(Ci.nsIObserverService);
     observerService.addObserver(this, "openwebapp-installed", false);
+    observerService.addObserver(this, "openwebapp-uninstalled", false);
 }
 serviceInvocationHandler.prototype = {
 
@@ -69,22 +73,53 @@ serviceInvocationHandler.prototype = {
       xulPanel.appendChild(frame);
       doc.getElementById("mainPopupSet").appendChild(xulPanel);
       
-      frame.setAttribute("src", require("self").data.url("service2.html"));
-
       return [xulPanel, frame];
     },
-    
-    show: function(panel) {
+
+    registerMediator: function(methodName, callback) {
+      // this is conceptually a 'static' method - once called it will affect
+      // all future instances of the serviceInvocationHandler.
+      mediatorCreators[methodName] = callback;
+    },
+
+    show: function(panelRecord) {
+      // NOTE: it is possible a popup for another service is already showing -
+      // we should check for this and hide them.
+      var {panel, iframe, methodName, mediatorargs} = panelRecord;
+      var url = mediatorargs && mediatorargs.url
+                ? mediatorargs.url
+                : require("self").data.url("service2.html");
+      if (iframe.getAttribute("src") != url) {
+        iframe.setAttribute("src", url)
+      }
       // TODO: steal sizeToContent from F1
       if (panel.state == "closed") {
           panel.sizeTo(500, 400);
-          let larry = this._window.document.getElementById('identity-box');
-          panel.openPopup(larry, "after_start", 8);
+          let anchor;
+          if (mediatorargs && mediatorargs.anchor)
+            anchor = mediatorargs.anchor;
+          if (!anchor) {
+            anchor = this._window.document.getElementById('identity-box');
+          }
+          panel.openPopup(anchor, "after_start", 8);
+          if (mediatorargs && mediatorargs.onhide) {
+            let onhidden = function() {
+              panel.removeEventListener("popuphidden", onhidden, false);
+              mediatorargs.onhide(iframe);
+            }
+            panel.addEventListener("popuphidden", onhidden, false);
+          }
+      }
+      // We re-call the onshow method even if it was previously opened
+      // because the url might have changed (ie, we may be using a different
+      // mediator than last time)
+      if (mediatorargs && mediatorargs.onshow) {
+        mediatorargs.onshow(iframe);
       }
     },
-    
+
     observe: function(subject, topic, data) {
-      if (topic == "openwebapp-installed")
+      if (topic === "openwebapp-installed" || topic === "openwebapp-uninstalled")
       {
         // let our panels know, if they are visible
         for each (let popupCheck in this._popups) {
@@ -182,10 +217,10 @@ serviceInvocationHandler.prototype = {
 
     invoke: function(contentWindowRef, methodName, args, successCB, errorCB) {
       try {
-        // Do we already have a panel for this content window?
+        // Do we already have a panel for this service for this content window?
         let thePanel, theIFrame, thePanelRecord;
         for each (let popupCheck in this._popups) {
-          if (contentWindowRef == popupCheck.contentWindow) {
+          if (contentWindowRef == popupCheck.contentWindow && methodName == popupCheck.methodName) {
             thePanel = popupCheck.panel;
             theIFrame = popupCheck.iframe;
             thePanelRecord = popupCheck;
@@ -193,24 +228,45 @@ serviceInvocationHandler.prototype = {
           }
         }
         // If not, go create one
-        // TEMPORARY: always create panel for debugging
-        //if (!thePanel) {
-        if (1) {
+        if (!thePanel) {
           let tmp = this._createPopupPanel();
           thePanel = tmp[0];
           theIFrame = tmp[1];
           thePanelRecord =  { contentWindow: contentWindowRef, panel: thePanel, iframe: theIFrame} ;
-
           this._popups.push( thePanelRecord );
+          // add an unload listener so we can nuke this popup info as the window closes.
+          let self = this;
+          contentWindowRef.addEventListener("unload", function(evt) {
+            // nuke any popups targetting this window.
+            // XXX - this probably needs tweaking - what if the app is still
+            // "working" as the user navigates away from the page?  Currently
+            // there is no reasonable way to detect this though.
+            let newPopups = [];
+            for each (let popupCheck in self._popups) {
+              if (contentWindowRef === evt.currentTarget) {
+                // this popup record must die.
+                let nukePanel = popupCheck.panel;
+                if (nukePanel.state !== "closed") {
+                  nukePanel.hidePopup();
+                }
+              } else {
+                newPopups.push(popupCheck);
+              }
+            }
+            console.log("window closed - had", self._popups.length, "popups, now have", newPopups.length);
+            self._popups = newPopups;
+            }, false);
         }
-        this.show(thePanel);
-
-        // Update the content for the new invocation        
+        // Update the content for the new invocation
+        let ma = mediatorCreators[methodName] ? mediatorCreators[methodName]() : undefined;
+        thePanelRecord.mediatorargs = ma;
         thePanelRecord.contentWindow = contentWindowRef;
         thePanelRecord.methodName = methodName;
-        thePanelRecord.args = args;
+        thePanelRecord.args = (ma && ma.updateargs) ? ma.updateargs(args) : args;
         thePanelRecord.successCB = successCB;
-        thePanelRecord.errorCB = errorCB; 
+        thePanelRecord.errorCB = errorCB;
+        this.show(thePanelRecord);
+
         //XX this memory is going to stick around for a long time; consider cleaning it up proactively
         
         this._updateContent(thePanelRecord);
@@ -226,7 +282,11 @@ serviceInvocationHandler.prototype = {
       // 1. What method is being invoked (and maybe some nice explanatory text)
       // 2. Which services can provide that method, along with their icons and iframe URLs
       // 3. Where to return messages to once it gets confirmation (that would be this)
-      
+
+      // If there was an error we are about to destroy the context for the
+      // error, so hide any notifications.
+      this._hideErrorNotification(thePanelRecord);
+
       // Hang on, the window may not be fully loaded yet
       let self = this;
       let { methodName, args, successCB, errorCB } = thePanelRecord;
@@ -238,31 +298,54 @@ serviceInvocationHandler.prototype = {
       function updateContentWhenWindowIsReady()
       {
 //        let theIFrame = theIFrame.wrappedJSObject;
-        if (!theIFrame.contentDocument || !theIFrame.contentDocument.getElementById("wrapper")) {
+        if (theIFrame.contentDocument.readyState !== "complete") {
           let timeout = self._window.setTimeout(updateContentWhenWindowIsReady, 1000);
         } else {
-          // Ready to go: attach our response listener
-          theIFrame.contentDocument.wrappedJSObject.addEventListener("message", function(event) {
-            if (event.origin == "resource://openwebapps/service") {
-              var msg = JSON.parse(event.data);
-              if (msg.cmd == "result") {
-                try {
-                  thePanel.hidePopup();
-                  successCB(event.data);
-                } catch (e) {
-                  dump(e + "\n");
+          // Ready to go: attach our response listener if we haven't already
+          // (eg, on reconfigure events we get here twice...)
+          if (!thePanelRecord.haveAddedListener) {
+            theIFrame.contentDocument.wrappedJSObject.addEventListener("message", function(event) {
+              if (event.origin == "resource://openwebapps/service") {
+                var msg = JSON.parse(event.data);
+                // first see if our mediator wants to handle or mutate this.
+                let mediatorargs = thePanelRecord.mediatorargs;
+                if (mediatorargs && mediatorargs.onresult) {
+                  try {
+                    msg = mediatorargs.onresult(msg) || {cmd: ''};
+                  } catch (ex) {
+                    console.error("mediator callback", msg.cmd, "failed:", ex, ex.stack);
+                  }
                 }
-              } else if (msg.cmd == "error") {
-                dump(event.data + "\n");
-              } else if (msg.cmd == "reconfigure") {
-                dump("services.js: Got a reconfigure event\n");
-                self._updateContent(contentWindowRef, thePanel, theIFrame, methodName, args, successCB, errorCB);
+                if (msg.cmd == "result") {
+                  try {
+                    thePanel.hidePopup();
+                    successCB(event.data);
+                  } catch (e) {
+                    dump(e + "\n");
+                  }
+                } else if (msg.cmd == "error") {
+                  dump(event.data + "\n");
+                  // Show the error box - it might be better to only show it
+                  // if the panel is not showing, but OTOH, the panel might
+                  // have been closed just as the error was being rendered
+                  // in the panel - so for now we always show it.
+                  self._showErrorNotification(thePanelRecord);
+                } else if (msg.cmd == "reconfigure") {
+                  dump("services.js: Got a reconfigure event\n");
+                  self._updateContent(thePanelRecord);
+                }
+              } else {
               }
-            } else {
-            }
-          }, false);
-          
-          // Send reconfigure event
+            }, false);
+            thePanelRecord.haveAddedListener = true;
+          };
+
+          // Send an initialize event before touching the iframes etc so the
+          // page can delete existing ones etc.
+          theIFrame.contentWindow.wrappedJSObject.handleAdminPostMessage(
+              JSON.stringify({cmd:"init", method:methodName,
+                              caller:contentWindowRef.location.href}));
+
           thePanel.successCB = successCB;
           thePanel.errorCB = errorCB;
           
@@ -298,6 +381,40 @@ serviceInvocationHandler.prototype = {
         }
       }
       updateContentWhenWindowIsReady();
+    },
+
+    _showErrorNotification: function(thePanelRecord) {
+      let { methodName, contentWindow, mediatorargs } = thePanelRecord;
+      let nId = "openwebapp-error-" + methodName;
+      let nBox = this._window.gBrowser.getNotificationBox();
+      let notification = nBox.getNotificationWithValue(nId);
+      let message = mediatorargs.notificationErrorText || "Houston, we have app roblem";
+      let self = this;
+      // Check that we aren't already displaying our notification
+      if (!notification) {
+        buttons = [{
+          label: "try again",
+          accessKey: null,
+          callback: function () {
+            self._window.setTimeout(function () {
+              self.show(thePanelRecord);
+              self._updateContent(thePanelRecord);
+            }, 0);
+          }
+        }];
+        nBox.appendNotification(message, nId, null,
+                                nBox.PRIORITY_WARNING_MEDIUM, buttons);
+      }
+    },
+
+    _hideErrorNotification: function(thePanelRecord) {
+      let { methodName } = thePanelRecord;
+      let nId = "openwebapp-error-" + methodName;
+      let nb = this._window.gBrowser.getNotificationBox();
+      let notification = nb.getNotificationWithValue(nId);
+      if (notification) {
+        nb.removeNotification(notification);
+      }
     }
 };
 
