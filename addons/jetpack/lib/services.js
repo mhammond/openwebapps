@@ -85,8 +85,8 @@ serviceInvocationHandler.prototype = {
     show: function(panelRecord) {
       // NOTE: it is possible a popup for another service is already showing -
       // we should check for this and hide them.
-      var {panel, iframe, methodName, mediatorargs} = panelRecord;
-      var url = mediatorargs && mediatorargs.url
+      let {panel, iframe, methodName, mediatorargs} = panelRecord;
+      let url = mediatorargs && mediatorargs.url
                 ? mediatorargs.url
                 : require("self").data.url("service2.html");
       if (iframe.getAttribute("src") != url) {
