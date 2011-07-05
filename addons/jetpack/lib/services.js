@@ -64,6 +64,7 @@ serviceInvocationHandler.prototype = {
       let XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
       let xulPanel = doc.createElementNS(XUL_NS, "panel");
       xulPanel.setAttribute("type", "arrow");
+      xulPanel.setAttribute('level', 'parent');
 
       let frame = doc.createElementNS(XUL_NS, "browser");      
       frame.setAttribute("flex", "1");
@@ -101,7 +102,16 @@ serviceInvocationHandler.prototype = {
           if (!anchor) {
             anchor = this._window.document.getElementById('identity-box');
           }
-          panel.openPopup(anchor, "after_start", 8);
+
+        // compute the correct direction of the window to ensure the panel will
+        // be fully visible if possible
+        let position = 'bottomcenter topleft';
+        if (this._window.getComputedStyle(this._window.gNavToolbox,
+                                         "").direction === "rtl") {
+            position = 'bottomcenter topright';
+        }
+        panel.openPopup(anchor, position, 0, 0, false, false);
+
           if (mediatorargs && mediatorargs.onhide) {
             let onhidden = function() {
               panel.removeEventListener("popuphidden", onhidden, false);
