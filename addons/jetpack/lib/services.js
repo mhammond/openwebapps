@@ -40,8 +40,19 @@
 const {Cu, Ci, Cc} = require("chrome"); 
 var {FFRepoImplService} = require("api");
 
-// a callback to create mediator args, keyed by service ID.
-var mediatorCreators = {};
+// a mediator is what provides the UI for a service.  It is normal "untrusted"
+// content (although from the user's POV it is somewhat trusted)
+// What isn't clear is how the mediator should be registered - possibly it
+// should become a normal app?
+// key is the service name, value is object with static properties.
+var mediators = {};
+
+// An 'agent' is trusted code running with chrome privs.  It gets a chance to
+// hook into most aspects of a service operation to add additional value for
+// the user.  This might include things like automatically bookmarking
+// sites which have been shared etc.  Agents will be either builtin to
+// the User-Agent (ie, into Firefox) or be extensions.
+var agentCreators = {}; // key is service name, value is a callable.
 
 /**
  * MediatorPanel
@@ -58,9 +69,9 @@ function MediatorPanel(window, contentWindowRef, methodName, args, successCB, er
     this.errorCB = errorCB;
 
     // Update the content for the new invocation
-    let ma = mediatorCreators[methodName] ? mediatorCreators[methodName]() : undefined;
-    this.mediatorArgs = ma;
-    this.args = (ma && ma.updateargs) ? ma.updateargs(args) : args;
+    let agent = agentCreators[methodName] ? agentCreators[methodName]() : undefined;
+    this.agent = agent;
+    this.args = (agent && agent.updateargs) ? agent.updateargs(args) : args;
 
     this.panel = null;
     this.browser = null;
@@ -95,11 +106,11 @@ dump("    create panel for "+this.methodName+"\n");
         browser.addEventListener("load",
                                this.browserLoadListener.bind(this), true);
 
-        if (this.mediatorArgs && this.mediatorArgs.onshow) {
+        if (this.agent && this.agent.onshow) {
             panel.addEventListener('popupshown', this.panelShown.bind(this),
                                 false);
         }
-        if (this.mediatorArgs && this.mediatorArgs.onhide) {
+        if (this.agent && this.agent.onhide) {
             panel.addEventListener('popuphidden', this.panelHidden.bind(this),
                                 false);
         }
@@ -128,12 +139,12 @@ dump("    create panel for "+this.methodName+"\n");
 
         var msg = JSON.parse(event.data);
         // first see if our mediator wants to handle or mutate this.
-        let mediatorargs = this.mediatorArgs;
-        if (mediatorargs && mediatorargs.onresult) {
+        let agent = this.agent;
+        if (agent && agent.onresult) {
             try {
-                msg = mediatorargs.onresult(msg) || {cmd: ''};
+                msg = agent.onresult(msg) || {cmd: ''};
             } catch (ex) {
-                console.error("mediator callback", msg.cmd, "failed:", ex, ex.stack);
+                console.error("agent callback", msg.cmd, "failed:", ex, ex.stack);
             }
         }
         if (msg.cmd == "result") {
@@ -216,12 +227,12 @@ dump("send initialize event to panel "+this.methodName+"\n");
         // We re-call the onshow method even if it was previously opened
         // because the url might have changed (ie, we may be using a different
         // mediator than last time)
-        this.mediatorArgs.onshow(this.browser);
+        this.agent.onshow(this.browser);
     },
   
     panelHidden: function () {
         //dump("panelHidden "+this.methodName+"\n");
-        this.mediatorArgs.onhide(this.browser);
+        this.agent.onhide(this.browser);
     },
 
     sizeToContent: function (event) {
@@ -233,8 +244,8 @@ dump("send initialize event to panel "+this.methodName+"\n");
             return;
         }
         let doc = this.browser.contentDocument;
-        let content = this.mediatorArgs && this.mediatorArgs.content
-                        ? this.mediatorArgs.content
+        let content = this.mediator && this.mediator.content
+                        ? this.mediator.content
                         : 'wrapper';
         let wrapper = doc && doc.getElementById(content);
         if (!wrapper) {
@@ -251,17 +262,18 @@ dump("send initialize event to panel "+this.methodName+"\n");
      */
     show: function(panelRecord) {
 dump("    show panel for "+this.methodName+"\n");
-        let url = this.mediatorArgs && this.mediatorArgs.url
-                  ? this.mediatorArgs.url
-                  : require("self").data.url("service2.html");
+        let url = mediators[this.methodName] && mediators[this.methodName].url;
+        if (!url) {
+          url = require("self").data.url("service2.html");
+        }
         if (this.browser.getAttribute("src") != url) {
             this.browser.setAttribute("src", url)
         }
         if (this.panel.state == "closed") {
             //this.panel.sizeTo(500, 400);
             let anchor;
-            if (this.mediatorArgs && this.mediatorArgs.anchor)
-                anchor = this.mediatorArgs.anchor;
+            if (this.agent && this.agent.anchor)
+                anchor = this.agent.anchor;
             if (!anchor) {
                 anchor = this.window.document.getElementById('identity-box');
             }
@@ -294,7 +306,8 @@ dump("    show panel for "+this.methodName+"\n");
 
         // Check that we aren't already displaying our notification
         if (!notification) {
-            let message = this.mediatorArgs.notificationErrorText ||
+            let mediator = mediators[this.methodName];
+            let message = (mediator && mediator.notificationErrorText) ||
                                 "Houston, we have app roblem";
             let self = this;
             buttons = [{
@@ -337,8 +350,6 @@ dump("    show panel for "+this.methodName+"\n");
  * tab, but the user can switch away from a tab while a service invocation
  * dialog is still in progress.
  *
- * XXX Service invokation should be per window as it really just handles
- * per window functionality.
  */
 function serviceInvocationHandler(win)
 {
@@ -356,12 +367,22 @@ serviceInvocationHandler.prototype = {
      * registerMediator
      *
      * this is conceptually a 'static' method - once called it will affect
-     * all future instances of the serviceInvocationHandler.
+     * all future and current instances of the serviceInvocationHandler.
      *
-     * XXX This is PER WINDOW
      */
-    registerMediator: function(methodName, callback) {
-      mediatorCreators[methodName] = callback;
+    registerMediator: function(methodName, mediator) {
+      mediators[methodName] = mediator;
+    },
+
+    /**
+     * registerAgent
+     *
+     * this is conceptually a 'static' method - once called it will affect
+     * all future and current instances of the serviceInvocationHandler.
+     *
+     */
+    registerAgent: function(methodName, callback) {
+      agentCreators[methodName] = callback;
     },
 
     /**
