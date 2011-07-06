@@ -78,11 +78,11 @@ dump("    create panel for "+this.methodName+"\n");
         let panel = doc.createElementNS(XUL_NS, "panel");
         panel.setAttribute("type", "arrow");
         panel.setAttribute('level', 'parent');
+        panel.setAttribute("class", "owaServicePanel "+this.methodName.replace('.','_'));
   
         let browser = doc.createElementNS(XUL_NS, "browser");      
         browser.setAttribute("flex", "1");
         browser.setAttribute("type", "content");
-        browser.setAttribute("class", "owaServicePanel");
         browser.setAttribute("transparent", "transparent");
         browser.setAttribute("style", "width:484px;height:484px");
         panel.appendChild(browser);
@@ -331,7 +331,7 @@ dump("    show panel for "+this.methodName+"\n");
 /**
  * serviceInvocationHandler
  *
- * Controller for all mediator panels.
+ * Controller for all mediator panels within a single top level window.
  * 
  * We create a service invocation panel when needed; there is at most one per
  * tab, but the user can switch away from a tab while a service invocation
