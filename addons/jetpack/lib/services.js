@@ -72,6 +72,7 @@ function MediatorPanel(window, contentWindowRef, methodName, args, successCB, er
     let agent = agentCreators[methodName] ? agentCreators[methodName]() : undefined;
     this.agent = agent;
     this.args = (agent && agent.updateargs) ? agent.updateargs(args) : args;
+    this.mediator = mediators[this.methodName];
 
     this.panel = null;
     this.browser = null;
@@ -89,13 +90,13 @@ dump("    create panel for "+this.methodName+"\n");
         let panel = doc.createElementNS(XUL_NS, "panel");
         panel.setAttribute("type", "arrow");
         panel.setAttribute('level', 'parent');
-        panel.setAttribute("class", "owaServicePanel "+this.methodName.replace('.','_'));
+        panel.setAttribute("class", "openwebapps-panel "+this.methodName.replace('.','_'));
   
         let browser = doc.createElementNS(XUL_NS, "browser");      
         browser.setAttribute("flex", "1");
         browser.setAttribute("type", "content");
+        browser.setAttribute("class", "openwebapps-browser");
         browser.setAttribute("transparent", "transparent");
-        browser.setAttribute("style", "width:484px;height:484px");
         panel.appendChild(browser);
 
         this.panel = panel;
@@ -244,12 +245,20 @@ dump("send initialize event to panel "+this.methodName+"\n");
             return;
         }
         let doc = this.browser.contentDocument;
-        let content = this.mediator && this.mediator.content
-                        ? this.mediator.content
-                        : 'wrapper';
-        let wrapper = doc && doc.getElementById(content);
+        let wrapper;
+        if (!doc) {
+            return;
+        }
+        if (this.mediator && this.mediator.content)
+            wrapper = doc.getElementById(content);
+        if (!wrapper)
+            // try the body element
+            wrapper = doc.getElementsByTagName('body')[0];
+        if (!wrapper)
+            // XXX old fallback
+            wrapper = doc.getElementById('wrapper');
         if (!wrapper) {
-              return;
+            return;
         }
         this.browser.style.width = wrapper.scrollWidth + "px";
         this.browser.style.height = wrapper.scrollHeight + "px";
@@ -262,7 +271,7 @@ dump("send initialize event to panel "+this.methodName+"\n");
      */
     show: function(panelRecord) {
 dump("    show panel for "+this.methodName+"\n");
-        let url = mediators[this.methodName] && mediators[this.methodName].url;
+        let url = this.mediator && this.mediator.url;
         if (!url) {
           url = require("self").data.url("service2.html");
         }
@@ -306,9 +315,8 @@ dump("    show panel for "+this.methodName+"\n");
 
         // Check that we aren't already displaying our notification
         if (!notification) {
-            let mediator = mediators[this.methodName];
-            let message = (mediator && mediator.notificationErrorText) ||
-                                "Houston, we have app roblem";
+            let message = (this.mediator && this.mediator.notificationErrorText) ||
+                                "Houston, we have a problem";
             let self = this;
             buttons = [{
                 label: "try again",
