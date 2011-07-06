@@ -152,15 +152,15 @@ dump("    create panel for "+this.methodName+"\n");
                 this.panel.hidePopup();
                 this.successCB(event.data);
             } catch (e) {
-                dump(e + "\n");
+                dump("message result "+e + "\n");
             }
         } else if (msg.cmd == "error") {
-            dump(event.data + "\n");
+            dump("message error "+event.data + "\n");
             // Show the error box - it might be better to only show it
             // if the panel is not showing, but OTOH, the panel might
             // have been closed just as the error was being rendered
             // in the panel - so for now we always show it.
-            this.showErrorNotification();
+            this.showErrorNotification(msg);
         } else if (msg.cmd == "reconfigure") {
             dump("services.js: Got a reconfigure event\n");
             this.updateContent();
@@ -307,15 +307,21 @@ dump("    show panel for "+this.methodName+"\n");
      *
      * show an error notification for this mediator
      */
-    showErrorNotification: function() {
+    showErrorNotification: function(data) {
         let nId = "openwebapp-error-" + this.methodName;
         let nBox = this.window.gBrowser.getNotificationBox();
         let notification = nBox.getNotificationWithValue(nId);
 
         // Check that we aren't already displaying our notification
         if (!notification) {
-            let message = (this.mediator && this.mediator.notificationErrorText) ||
-                                "Houston, we have a problem";
+            let message;
+            if (data && data.msg)
+                message = data.msg;
+            else if (this.mediator && this.mediator.notificationErrorText)
+                message = this.mediator.notificationErrorText;
+            else
+                message = "42";
+
             let self = this;
             buttons = [{
                 label: "try again",
