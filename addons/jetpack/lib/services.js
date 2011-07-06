@@ -126,7 +126,6 @@ dump("    create panel for "+this.methodName+"\n");
             self.sizeToContent(event);
         }, 0);
         this.attachMessageListener();
-        this.initializeContent();
     },
     
     attachMessageListener: function() {
@@ -250,7 +249,7 @@ dump("send initialize event to panel "+this.methodName+"\n");
             return;
         }
         if (this.mediator && this.mediator.content)
-            wrapper = doc.getElementById(content);
+            wrapper = doc.getElementById(this.mediator.content);
         if (!wrapper)
             // try the body element
             wrapper = doc.getElementsByTagName('body')[0];
