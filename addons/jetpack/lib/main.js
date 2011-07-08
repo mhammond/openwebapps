@@ -250,14 +250,6 @@ openwebapps.prototype = {
                 }
             }
         });
-        win.appinjector.registerAction(function() {
-            // Clear out the current page URL on every page load
-            let toolbarButton = win.document.getElementById("openwebapps-toolbar-button");
-            if (toolbarButton) {
-                toolbarButton.classList.remove("highlight");
-            }
-            repo.setCurrentPageAppURL(null);
-        });
     },
     
     _registerSyncEngine: function() {
