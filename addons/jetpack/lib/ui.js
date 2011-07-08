@@ -37,6 +37,7 @@
 const {Cc, Ci, Cm, Cu} = require("chrome");
 const widgets = require("widget");
 const simple = require("simple-storage");
+const url = require("./urlmatch");
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
@@ -116,6 +117,7 @@ var dashboard = {
         let thePanel = require("panel").Panel({
             height: 130,
             width: 800,
+            position: "topcenter bottomright",
             contentURL: data.url("panel.html"),
             contentScriptFile: [data.url("base32.js"),
                                 data.url("jquery-1.4.2.min.js"),
@@ -165,7 +167,7 @@ var dashboard = {
                                               require("self").id + "-openwebapps-toolbar-button");
     
         if (show != undefined) {
-          self._panel.show(widgetAnchor);
+          self._panel.show(widgetAnchor, "topcenter bottomright");
         }
       
     },
@@ -240,7 +242,7 @@ openwebappsUI.prototype = {
             this._offerAppPanel.hide();
     },
 
-    _showPageHasApp: function(page) {
+    _showPageHasApp: function(page, owa) { // XX I'm not happy that I need to pass in owa here, but I need it for the purchase activity. Refactor?
         let link = simple.storage.links[page];
         if (!link.show || this._installInProgress)
             return;
@@ -254,7 +256,32 @@ openwebappsUI.prototype = {
                     '       (function(i) { return function() { ' +
                     '           self.port.emit(actions[i]);' +
                     '       }})(i); ' +
-                    '}'
+                    '}' +
+                    'function renderOffer(offer) {'+
+                    '  var s="";'+
+                    '  if (offer.purchased) {' +
+                    '     s += "You have already purchased this application.  Reinstall now?";' +
+                    '  }  else { '+
+                    '    s += "Purchase for $" + offer.price + "?";'+
+                    '  }'+
+                    '  document.getElementById("store_offer").innerHTML = s;'+
+                    '  document.getElementById("store_offer").style.display = "block";'+
+                    '  document.getElementById("store_progress").style.display = "none";'+
+                    ' '+
+                    '  var acct="";'+
+                    '  if (offer.account) {'+
+                    '    acct = "Logged in to " + offer.storeName + " as <i>" + offer.account + "</i>";'+
+                    '  } else {'+
+                    '    acct = "You will be asked to log in to " + offer.storeName + " if you install.";'+
+                    '  }'+
+                    '  document.getElementById("login_status").innerHTML = acct;'+
+                    '  document.getElementById("login_status").style.display = "block";'+
+                    '}'+
+                    'self.port.on("store", function(data) {'+
+                    '  document.getElementById("self_published").style.display="none";' +
+                    '  document.getElementById("store").style.display="block";' +
+                    '  if (data.offer) { renderOffer(data.offer) };' +
+                    '});'
             });
         }
         if (this._offerAppPanel.isShowing) return;
@@ -262,26 +289,78 @@ openwebappsUI.prototype = {
         /* Setup callbacks */
         let self = this;
         this._offerAppPanel.port.on("yes", function() {
+            dump("APPS | ui.showPageHasApp.onYes | User clicked Yes\n");
             self._installInProgress = true;
-            self._offerAppPanel.hide();
-            self._repo.install(
-                "chrome://openwebapps", {
-                    _autoInstall: true,
-                    url: link.url,
-                    origin: page,
-                    onsuccess: function() {
-                        self._installInProgress = false;
-                        //simple.storage.links[page].show = false;
+            
+            if (link.offer) {
+              dump("APPS | ui.showPageHasApp.onYes | There's an offer\n");
+              // If there is a store offer, we have a more complicated flow.
+
+              if (link.offer.account) {
+                dump("APPS | ui.showPageHasApp.onYes | The user is logged in\n");
+                // The store thinks the user is logged in; let's go ahead and
+                // try to perform the purchase.  We might still end up needing
+                // to send the user to a landing page.
+            
+                let domain = url.URLParse(page);
+                domain = domain.normalize().originOnly().toString();
+                self._offerAppPanel.hide();
+                owa.performPurchaseActivity(link.store, domain, function(result) {
+                  self._installInProgress = false;
+                });
+                
+              } else {
+                // The store doesn't think the user is logged in; an authentication
+                // will be required.  Just send the user off to the store's
+                // indicated landing page.
+                if (link.offer.purchaseURL) {
+                  dump("APPS | ui.showPageHasApp.onYes | The user is not logged in, but there's a purchaseURL - creating new tab\n");
+                  let wm = Cc["@mozilla.org/appshell/window-mediator;1"]
+                          .getService(Ci.nsIWindowMediator);
+                  let recentWindow = wm.getMostRecentWindow("navigator:browser");
+                  if (recentWindow) {
+                      let tab = recentWindow.gBrowser.addTab(link.offer.purchaseURL);
+                      recentWindow.gBrowser.selectedTab = tab;
                     }
-                }, self._window
-            );
+                } else {
+                  dump("APPS | ui.showPageHasApp.onYes | The user is not logged in, and there is no purchaseURL - we're done\n");
+                }
+                self._installInProgress = false;                
+              }
+            
+            
+            } else {
+              // Otherwise it's self-published; go ahead and install it.
+              dump("APPS | ui.showPageHasApp.onYes | No offer; go ahead and install\n");
+              try {
+                self._offerAppPanel.hide();
+                self._repo.install(
+                    "chrome://openwebapps", {
+                        _autoInstall: true,
+                        url: link.url,
+                        origin: page,
+                        onsuccess: function() {
+                            self._installInProgress = false;
+                            //simple.storage.links[page].show = false;
+                        },
+                        onerror: function(res) {
+                          console.log("An error occured while attempting to install an application: " + JSON.stringify(res));
+                          self._installInProgress = false;
+                        }
+                    }, self._window
+                );
+              } catch (e) {
+                console.log("An error occured while attempting to install an application: " + e);
+                self._installInProgress = false;
+              }
+            }
         });
         this._offerAppPanel.port.on("no", function() {
             self._offerAppPanel.hide();
         });
         this._offerAppPanel.port.on("never", function() {
             self._offerAppPanel.hide();
-            simple.storage.links[page].show = false;
+            simple.storage.links[page].show = false; 
         });
 
         /* Prepare to anchor panel to apps widget */
@@ -292,6 +371,21 @@ openwebappsUI.prototype = {
             require("self").id + "-openwebapps-toolbar-button");
 
         this._offerAppPanel.show(bar);
+
+        if (link.store) {
+          this._offerAppPanel.port.emit("store", {store:link.store, offer:link.offer});
+        }
+    },
+    
+    _showPageHasStoreApp: function(page, store) {
+        let link = simple.storage.links[page];
+        if (!link.show || this._installInProgress)
+            return;
+        if (this._offerAppPanel)
+        {
+          this._offerAppPanel.port.emit("store", {store:link.store, offer:link.offer});
+        }
+      
     }
 };
 
