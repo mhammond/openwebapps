@@ -282,21 +282,6 @@ openwebapps.prototype = {
         
         if (topic == "weave:service:ready") {
             registerSyncEngine();
-        } else if (topic == "openwebapp-installed") {
-//             let installData = JSON.parse(data)
-//             this._ui._renderDockIcons(installData.origin);
-//             if (!installData.hidePostInstallPrompt) {
-//                 this._ui._showDock();
-//             }
-            try{
-               this._ui._updateDashboard('yes');
-            } catch (e) {
-                console.log(e);
-            }
-
-        } else if (topic == "openwebapp-uninstalled") {
-//             this._ui._renderDockIcons();
-               this._ui._updateDashboard();
         } else if (topic == "content-document-global-created") {
             let mainWindow = subject
                          .QueryInterface(Ci.nsIInterfaceRequestor)
@@ -422,9 +407,13 @@ let AboutAppsHome = {
 //----- end about:apps (but see ComponentRegistrar call in startup())
 
 let unloaders = [];
+
 function startup(getUrlCB) {
     /* Initialize simple storage */
     if (!simple.storage.links) simple.storage.links = {};
+    Services.obs.notifyObservers(null, "openwebapps-mediator-init", "");
+    
+    ui.dashboard.init();
 
     /* We use winWatcher to create an instance per window (current and future) */
     let iter = Cc["@mozilla.org/appshell/window-mediator;1"]
@@ -433,6 +422,7 @@ function startup(getUrlCB) {
     while (iter.hasMoreElements()) {
         let aWindow = iter.getNext().QueryInterface(Ci.nsIDOMWindow);
         aWindow.apps = new openwebapps(aWindow, getUrlCB);
+        Services.obs.notifyObservers(aWindow, "openwebapps-mediator-load", "");
     }
     function winWatcher(subject, topic) {
         if (topic != "domwindowopened")
@@ -442,6 +432,7 @@ function startup(getUrlCB) {
             let doc = subject.document.documentElement;
             if (doc.getAttribute("windowtype") == "navigator:browser") {
                 subject.apps = new openwebapps(subject, getUrlCB);
+                Services.obs.notifyObservers(subject, "openwebapps-mediator-load", "");
             }
         }, false);
     }
@@ -465,11 +456,8 @@ function startup(getUrlCB) {
     });
 
     // Broadcast that we're done, in case anybody is listening
-    let observerService = Cc["@mozilla.org/observer-service;1"]
-               .getService(Ci.nsIObserverService);
-
     let tmp = require("api");
-    observerService.notifyObservers(tmp.FFRepoImplService, "openwebapps-startup-complete", "");
+    Services.obs.notifyObservers(tmp.FFRepoImplService, "openwebapps-startup-complete", "");
 }
 
 function shutdown(why)
