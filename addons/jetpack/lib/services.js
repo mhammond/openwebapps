@@ -329,7 +329,6 @@ dump("    show panel for "+this.methodName+"\n");
                 callback: function () {
                     self.window.setTimeout(function () {
                         self.show();
-                        self.updateContent();
                     }, 0);
                 }
             }];
