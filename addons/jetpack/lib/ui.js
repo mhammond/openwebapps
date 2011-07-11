@@ -162,6 +162,8 @@ var dashboard = {
         self._repo.list(function(apps) {
           self._panel.port.emit("theList", apps);
         });
+        let WM = Cc['@mozilla.org/appshell/window-mediator;1']
+            .getService(Ci.nsIWindowMediator);
         let currentDoc = WM.getMostRecentWindow("navigator:browser").document;
         var widgetAnchor = currentDoc.getElementById("widget:" + 
                                               require("self").id + "-openwebapps-toolbar-button");
