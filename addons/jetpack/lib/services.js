@@ -84,7 +84,6 @@ function MediatorPanel(window, contentWindowRef, methodName, args, successCB, er
 }
 MediatorPanel.prototype = {
     _createPopupPanel: function() {
-dump("    create panel for "+this.methodName+"\n");
         let doc = this.window.document;
         let XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
         let panel = doc.createElementNS(XUL_NS, "panel");
@@ -102,25 +101,29 @@ dump("    create panel for "+this.methodName+"\n");
         this.panel = panel;
         this.browser = browser;
 
+        this.messageListener = this._messageListener.bind(this)
         // Attach with 'useCapture = true' here since the load event doesn't
         // seem to bubble up to chrome.
-        browser.addEventListener("load",
-                               this.browserLoadListener.bind(this), true);
+        this.browserListener = this._browserLoadListener.bind(this)
+        browser.addEventListener("load", this.browserListener, true);
 
         if (this.agent && this.agent.onshow) {
-            panel.addEventListener('popupshown', this.panelShown.bind(this),
+            this.panelShown = this._panelShown.bind(this);
+            panel.addEventListener('popupshown', this.panelShown,
                                 false);
         }
         if (this.agent && this.agent.onhide) {
-            panel.addEventListener('popuphidden', this.panelHidden.bind(this),
+            this.panelHidden = this._panelHidden.bind(this);
+            panel.addEventListener('popuphidden', this.panelHidden,
                                 false);
         }
 
         doc.getElementById("mainPopupSet").appendChild(panel);
     },
 
-    browserLoadListener: function(event) {
-        dump("browser load "+event.target+"\n");
+    _browserLoadListener: function(event) {
+        // XXX this is currently receiving load events for the panel and any
+        // iframe children in the panel...how to stop?
         let self = this;
         this.window.setTimeout(function () {
             self.sizeToContent(event);
@@ -130,13 +133,12 @@ dump("    create panel for "+this.methodName+"\n");
     
     attachMessageListener: function() {
         let win = this.browser.contentWindow;
-        win.addEventListener("message", this.messageListener.bind(this), false);
+        win.addEventListener("message", this.messageListener, false);
     },
     
-    messageListener: function(event) {
+    _messageListener: function(event) {
         if (event.origin != "resource://openwebapps/service")
             return;
-
         var msg = JSON.parse(event.data);
         // first see if our mediator wants to handle or mutate this.
         let agent = this.agent;
@@ -181,7 +183,6 @@ dump("    create panel for "+this.methodName+"\n");
 
         this.hideErrorNotification();
 
-dump("send initialize event to panel "+this.methodName+"\n");
         // Send an initialize event before touching the iframes etc so the
         // page can delete existing ones etc.
         this.browser.contentWindow.wrappedJSObject.handleAdminPostMessage(
@@ -222,7 +223,7 @@ dump("send initialize event to panel "+this.methodName+"\n");
         }.bind(this));
     },
 
-    panelShown: function () {
+    _panelShown: function () {
         //dump("panelShown "+this.methodName+"\n");
         // We re-call the onshow method even if it was previously opened
         // because the url might have changed (ie, we may be using a different
@@ -230,7 +231,7 @@ dump("send initialize event to panel "+this.methodName+"\n");
         this.agent.onshow(this.browser);
     },
   
-    panelHidden: function () {
+    _panelHidden: function () {
         //dump("panelHidden "+this.methodName+"\n");
         this.agent.onhide(this.browser);
     },
