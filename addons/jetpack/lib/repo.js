@@ -188,7 +188,11 @@ Repo = (function() {
 
     // given an origin, normalize it (like, http://foo:80 --> http://foo), or
     // https://bar:443 --> https://bar, or even http://baz/ --> http://baz)
+    // XXX leave resource urls alone, allowing addons to include builtin default
+    // apps
     function normalizeOrigin(origin) {
+        if (origin.indexOf("resource://") == 0)
+            return origin;
         return URLParse(origin).normalize().originOnly().toString()
     }
 
