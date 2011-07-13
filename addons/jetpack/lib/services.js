@@ -127,6 +127,8 @@ MediatorPanel.prototype = {
         } else if (msg.cmd == "reconfigure") {
             dump("services.js: Got a reconfigure event\n");
             this.updateContent();
+        } else {
+            dump("MediatorPanel agent not grok this message: "+msg.cmd+"\n");
         }
     },
     /* end promised OWA Mediator Agent api */
