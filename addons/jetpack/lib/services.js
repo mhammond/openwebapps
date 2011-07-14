@@ -134,41 +134,39 @@ MediatorPanel.prototype = {
     /* end promised OWA Mediator Agent api */
 
     _createPopupPanel: function() {
-        let doc = this.window.document;
-        let XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-        let panel = doc.createElementNS(XUL_NS, "panel");
-        panel.setAttribute("type", "arrow");
-        panel.setAttribute('level', 'parent');
-        panel.setAttribute("class", "openwebapps-panel "+this.methodName.replace('.','_'));
-  
-        let browser = doc.createElementNS(XUL_NS, "browser");      
-        browser.setAttribute("flex", "1");
-        browser.setAttribute("type", "content");
-        browser.setAttribute("class", "openwebapps-browser");
-        browser.setAttribute("transparent", "transparent");
-        panel.appendChild(browser);
+        let data = require("self").data;
+        let contentScriptFiles = [data.url("mediatorapi.js")];
 
-        this.panel = panel;
-        this.browser = browser;
+        // XXX - update mediator registration to also include
+        // additional contentScriptFiles.
+        let url = this.mediator && this.mediator.url;
+        if (!url) {
+            url = require("self").data.url("service2.html");
+            contentScriptFiles.push(data.url("jquery-1.4.4.min.js"));
+            contentScriptFiles.push(data.url("jquery-ui-1.8.10.custom.min.js"));
+            contentScriptFiles.push(data.url("service.js"));
+        }
+        let thePanel = require("panel").Panel({
+          contentURL: url,
+          contentScriptFile: contentScriptFiles,
+          width: 484, height: 484
+        });
 
+/***
         this.messageListener = this._messageListener.bind(this)
         // Attach with 'useCapture = true' here since the load event doesn't
         // seem to bubble up to chrome.
         this.browserListener = this._browserLoadListener.bind(this)
         browser.addEventListener("load", this.browserListener, true);
 
+***/
         if (this._panelShown) {
-            this.panelShown = this._panelShown.bind(this);
-            panel.addEventListener('popupshown', this.panelShown,
-                                false);
+            thePanel.port.on("show", this._panelShown);
         }
         if (this._panelHidden) {
-            this.panelHidden = this._panelHidden.bind(this);
-            panel.addEventListener('popuphidden', this.panelHidden,
-                                false);
+            thePanel.port.on("hide", this._panelHidden);
         }
-
-        doc.getElementById("mainPopupSet").appendChild(panel);
+        this.panel = thePanel;
     },
 
     _browserLoadListener: function(event) {
@@ -191,58 +189,43 @@ MediatorPanel.prototype = {
      *
      * This resets the service iframes for the mediator
      */
-    updateContent: function() {
-        // bail early if the document is not ready
-        if (this.browser.contentDocument.readyState !== "complete") {
-            this.window.setTimeout(this.updateContent.bind(this), 1000);
-            return;
-        }
-
+    configureContent: function() {
         this.hideErrorNotification();
-
-        // Send an initialize event before touching the iframes etc so the
-        // page can delete existing ones etc.
-        this.browser.contentWindow.wrappedJSObject.handleAdminPostMessage(
-            JSON.stringify({cmd: "init",
-                            method: this.methodName,
-                            caller: this.contentWindow.location.href }));
-
-        FFRepoImplService.findServices(this.methodName, function(serviceList) {
-            // Make the iframes
-            for (var i=0;i<serviceList.length;i++)
-            {
-                let svc = serviceList[i];
-                let frame = this.browser.contentDocument.createElement("iframe");
-                frame.src = svc.url;
-                frame.classList.add("serviceFrame");
-                frame.setAttribute("id", "svc-frame-" + i);
-                this.browser.contentDocument.getElementById("frame-garage").appendChild(frame);
-                this.browser.addEventListener("DOMContentLoaded", function(event) {
-                    // XXX this should be a deterministic link based on the call to registerBuiltInApp
-                    if (svc.url.indexOf("resource://") == 0) {
-                        let observerService = Cc["@mozilla.org/observer-service;1"].getService(Ci.nsIObserverService);
-                        observerService.notifyObservers(frame.contentWindow, "openwebapps-service-panel-loaded", "");
-                    }
-                }, false);
-            }
+        // We are going to inject into our iframe (which is pointed at service.html).
+        // It needs to know:
+        // 1. What method is being invoked (and maybe some nice explanatory text)
+        // 2. Which services can provide that method, along with their icons and iframe URLs
+        // 3. Where to return messages to once it gets confirmation (that would be this)
+        let thePanel = this.panel;
+        let self = this;
   
-            // direct call
-            this.browser.contentWindow.wrappedJSObject.handleAdminPostMessage(
-                JSON.stringify({cmd:"setup",
-                                method: this.methodName,
-                                args: this.args,
-                                serviceList: serviceList, 
-                                caller: this.contentWindow.location.href}));
-  
-            // direct call
-            this.browser.contentWindow.wrappedJSObject.handleAdminPostMessage(
-                JSON.stringify({cmd:"start_channels"}));
-        }.bind(this));
+        // Ready to go: attach our response listeners
+        thePanel.port.on("result", function(msg) {
+          try {
+            thePanel.hidePopup();
+            successCB(event.data);
+          } catch (e) {
+            dump(e + "\n");
+          }
+        });
+        thePanel.port.on("error", function(msg) {
+          console.error("mediator reported invocation error:", msg)
+        });
+        thePanel.port.on("ready", function() {
+          FFRepoImplService.findServices(self.methodName, function(serviceList) {
+            thePanel.port.emit("setup", {
+                            method: self.methodName,
+                            args: self.args,
+                            serviceList: serviceList,
+                            caller: self.contentWindow.location.href
+            });
+          });
+        });
     },
 
     sizeToContent: function (event) {
         dump("sizeToContent "+this.methodName+"\n");
-        if (this.panel.state !== 'open') {
+        if (!this.panel.isShowing) {
             // if the panel is not open and visible we will not get the correct
             // size for the panel content.  This happens when the idle observer
             // first sets src on the browser.
@@ -273,29 +256,8 @@ MediatorPanel.prototype = {
      *
      * show the mediator popup
      */
-    show: function(panelRecord) {
-        let url = this.mediator && this.mediator.url;
-        if (!url) {
-          url = require("self").data.url("service2.html");
-        }
-        if (this.browser.getAttribute("src") != url) {
-            this.browser.setAttribute("src", url)
-        }
-        if (this.panel.state == "closed") {
-            // compute the correct direction of the window to ensure the panel will
-            // be fully visible if possible
-            let position = 'bottomcenter topleft';
-            if (this.window.getComputedStyle(this.window.gNavToolbox,
-                                             "").direction === "rtl") {
-                position = 'bottomcenter topright';
-            }
-            this.panel.openPopup(this.anchor, position, 0, 0, false, false);
-        }
-
-        if (!this.isConfigured) {
-            this.updateContent();
-            this.isConfigured = true;
-        }
+    show: function() {
+        this.panel.show(this.anchor);
     },
 
     /**
@@ -393,6 +355,36 @@ serviceInvocationHandler.prototype = {
       agentCreators[methodName] = callback;
     },
 
+    _createPopupPanel: function() {
+
+      let data = require("self").data;
+      let thePanel = require("panel").Panel({
+          contentURL: data.url("service2.html"),
+          contentScriptFile: [
+              data.url("mediatorapi.js"),
+              data.url("jquery-1.4.4.min.js"),
+              data.url("jquery-ui-1.8.10.custom.min.js"),
+              data.url("service.js"),
+          ],
+          width: 484, height: 484
+      });
+      return thePanel;
+    },
+    
+    show: function(panelRecord) {
+      let {panel} = panelRecord;
+      // TODO: steal sizeToContent from F1
+      if (!panel.isShowing) {
+//          panel.sizeTo(500, 400);
+          let larry = this._window.document.getElementById('identity-box');
+          panel.show(larry);
+      }
+      if (!panelRecord.isConfigured) {
+        panel.port.emit("reconfigure");
+        panelRecord.isConfigured = true;
+      }
+    },
+
     /**
      * initApp
      *
@@ -404,8 +396,8 @@ serviceInvocationHandler.prototype = {
         // All visible panels need to be reconfigured now, while invisible
         // ones can wait until they are re-shown.
         for each (let popupCheck in this._popups) {
-          if (popupCheck.panel.state != "closed") {
-            popupCheck.updateContent();
+          if (popupCheck.panel.isShowing) {
+            popupCheck.panel.port.emit("reconfigure");
           } else {
             popupCheck.isConfigured = false;
           }
@@ -448,6 +440,16 @@ serviceInvocationHandler.prototype = {
                         }
                     }
                 });
+            }
+            // If this app's window has a parent which lives in one of our
+            // panels, message the panel about the readiness.
+            if (contentWindowRef.parent) {
+              for each (let popupCheck in self._popups) {
+                if (popupCheck.panel.url === contentWindowRef.parent.location.href) {
+                  popupCheck.panel.port.emit("app_ready", contentWindowRef.location.href);
+                  break;
+                }
+              }
             }
         });
     },
@@ -494,7 +496,7 @@ serviceInvocationHandler.prototype = {
 
     // invoke below should really be named startActivity or something
     // this call means to invoke a specific call within a given app
-    invokeService: function(contentWindow, activity, message, args, cb, privileged) {
+    invokeService: function(contentWindow, activity, message, args, cb, cberr, privileged) {
         FFRepoImplService.getAppByUrl(contentWindow.location, function(app) {
             var theWindow = contentWindow;
 
@@ -515,10 +517,22 @@ serviceInvocationHandler.prototype = {
                 return;
             }
 
+            let cbshim = function(result) {
+              cb(JSON.stringify(result));
+            };
+            let cberrshim = function(result) {
+              if (cberr) {
+                cberr(JSON.stringify(result));
+              } else {
+                console.log("invokeService error but no error callback:", JSON.stringify(result));
+              }
+            }
             try {
-                theWindow._MOZ_SERVICES[activity][message](args, cb);
+                theWindow._MOZ_SERVICES[activity][message](args, cbshim, cberrshim);
             } catch (e) {
                 console.log("error invoking " + activity + "/" + message + " on app " + app.origin + "\n" + e.toString());
+                // invoke the callback with an error object the content can see.
+                cberrshim({error: e.toString()});
             }
         });
     },
@@ -540,8 +554,8 @@ serviceInvocationHandler.prototype = {
           if (popupCheck.contentWindow === evt.currentTarget) {
             // this popup record must die.
             let nukePanel = popupCheck.panel;
-            if (nukePanel.state !== "closed") {
-              nukePanel.hidePopup();
+            if (nukePanel.isShowing) {
+              nukePanel.hide();
             }
           } else {
             newPopups.push(popupCheck);
@@ -557,26 +571,31 @@ serviceInvocationHandler.prototype = {
      * show the panel for a mediator, creating one if necessary.
      */
     invoke: function(contentWindowRef, methodName, args, successCB, errorCB) {
+      try {
         // Do we already have a panel for this service for this content window?
-        let panel;
+        let thePanelRecord;
         for each (let popupCheck in this._popups) {
           if (contentWindowRef == popupCheck.contentWindow && methodName == popupCheck.methodName) {
-            panel = popupCheck;
+            thePanelRecord = popupCheck;
             break;
           }
         }
         // If not, go create one
-        if (!panel) {
+        if (!thePanelRecord) {
             let agent = agentCreators[methodName] ? agentCreators[methodName] : MediatorPanel;
-            panel = new agent(this._window, contentWindowRef, methodName, args, successCB, errorCB);
+            thePanelRecord = new agent(this._window, contentWindowRef, methodName, args, successCB, errorCB);
+            thePanelRecord.configureContent();
 
-            this._popups.push( panel );
+            this._popups.push(thePanelRecord);
             // add an unload listener so we can nuke this popup info as the window closes.
             contentWindowRef.addEventListener("unload",
                                this.removePanelsForWindow.bind(this), true);
         }
-        panel.show();
-        //XX this memory is going to stick around for a long time; consider cleaning it up proactively
+        thePanelRecord.show();
+      } catch (e) {
+        dump(e + "\n");
+        dump(e.stack + "\n");
+      }
     }
 };
 
