@@ -257,6 +257,10 @@ MediatorPanel.prototype = {
      * show the mediator popup
      */
     show: function() {
+        if (!this.isConfigured) {
+            this.panel.port.emit("reconfigure");
+            this.isConfigured = true;
+        }
         this.panel.show(this.anchor);
     },
 
@@ -353,36 +357,6 @@ serviceInvocationHandler.prototype = {
      */
     registerAgent: function(methodName, callback) {
       agentCreators[methodName] = callback;
-    },
-
-    _createPopupPanel: function() {
-
-      let data = require("self").data;
-      let thePanel = require("panel").Panel({
-          contentURL: data.url("service2.html"),
-          contentScriptFile: [
-              data.url("mediatorapi.js"),
-              data.url("jquery-1.4.4.min.js"),
-              data.url("jquery-ui-1.8.10.custom.min.js"),
-              data.url("service.js"),
-          ],
-          width: 484, height: 484
-      });
-      return thePanel;
-    },
-    
-    show: function(panelRecord) {
-      let {panel} = panelRecord;
-      // TODO: steal sizeToContent from F1
-      if (!panel.isShowing) {
-//          panel.sizeTo(500, 400);
-          let larry = this._window.document.getElementById('identity-box');
-          panel.show(larry);
-      }
-      if (!panelRecord.isConfigured) {
-        panel.port.emit("reconfigure");
-        panelRecord.isConfigured = true;
-      }
     },
 
     /**
