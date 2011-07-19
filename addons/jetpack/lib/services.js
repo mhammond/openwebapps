@@ -95,7 +95,7 @@ MediatorPanel.prototype = {
      */
     sendMessage: function sendMessage(topic, data) {
         var messageData = JSON.stringify({
-            topic: topic,
+            cmd: topic,
             data: data
         });
         var doc = this.browser.contentDocument;
@@ -135,7 +135,7 @@ MediatorPanel.prototype = {
         if (event.origin != this.panelOrigin)
             return;
         var msg = JSON.parse(event.data);
-        var cmd = "on_"+(msg.cmd || msg.topic);
+        var cmd = "on_"+msg.cmd;
         if (this[cmd]) {
             try {
                 // XXX f1 uses topic

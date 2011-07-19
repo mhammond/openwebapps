@@ -172,7 +172,6 @@ var gArguments;
 
 function sendOWAMessage(messageData) {
     var origin = window.location.protocol + "//" + window.location.host;
-    var topic = messageData.cmd || messageData.topic;
     window.postMessage(JSON.stringify(messageData), origin);
 }
 
@@ -227,7 +226,7 @@ $(document).ready(function() {
 
 function handleAdminPostMessage(data) {
     var cmdRequest = JSON.parse(data);
-    var topic = cmdRequest.cmd || cmdRequest.topic;
+    var topic = cmdRequest.cmd;
     if (topic == "setup")
     {
       handleSetup(cmdRequest.data);
