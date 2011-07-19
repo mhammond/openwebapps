@@ -170,6 +170,12 @@ var gServiceChannels = [];
 var gRequestMethod;
 var gArguments;
 
+function sendOWAMessage(messageData) {
+    var origin = window.location.protocol + "//" + window.location.host;
+    var topic = messageData.cmd || messageData.topic;
+    window.postMessage(JSON.stringify(messageData), origin);
+}
+
 function makeSuccessFunction(svc)
 {
   return function(result) {
@@ -214,24 +220,27 @@ function deleteOldChannels() {
 }
 
 $(document).ready(function() {
-  
+  // tell owa we're ready to rock-n-roll, be sure this happens after
+  // our message listener is ready
+  sendOWAMessage({cmd: "reconfigure"});
 });
 
 function handleAdminPostMessage(data) {
     var cmdRequest = JSON.parse(data);
-    if (cmdRequest.cmd == "setup")
+    var topic = cmdRequest.cmd || cmdRequest.topic;
+    if (topic == "setup")
     {
-      handleSetup(cmdRequest);
-    } 
-    else if (cmdRequest.cmd == "start_channels")
-    {
-      createChannels(cmdRequest);
+      handleSetup(cmdRequest.data);
+    //} 
+    //else if (cmdRequest.cmd == "start_channels")
+    //{
+      createChannels(cmdRequest.data);
     }
 }
                           
 function handleMessage(event)
 {
-  if (event.origin == "resource://openwebapps")
+  if (event.origin == "resource://openwebapps/service")
   {
     handleAdminPostMessage(event.data);
   } else {

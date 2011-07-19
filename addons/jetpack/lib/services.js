@@ -39,6 +39,7 @@
 
 const {Cu, Ci, Cc} = require("chrome"); 
 var {FFRepoImplService} = require("api");
+let {URLParse} = require("openwebapps/urlmatch");
 
 // a mediator is what provides the UI for a service.  It is normal "untrusted"
 // content (although from the user's POV it is somewhat trusted)
@@ -61,16 +62,22 @@ var agentCreators = {}; // key is service name, value is a callable.
  * per mediator, created only when needed.
  */
 function MediatorPanel(window, contentWindowRef, methodName, args, successCB, errorCB) {
-    dump("create mediator panel for "+methodName+"\n");
     this.window = window; // the window the panel is attached to
     this.contentWindow = contentWindowRef; // ???
     this.methodName = methodName;
     this.successCB = successCB;
     this.errorCB = errorCB;
 
+    // setup our postMessage origins, may be overridden by other mediators,
+    // panelOrigin SHOULD be overridden for different panels
+    this.origin = "resource://openwebapps/service";
+    let url = require("self").data.url("");
+    this.panelOrigin = URLParse(url).normalize().originOnly().toString();
+
     // Update the content for the new invocation
     this.args = this.updateargs(args);
     this.mediator = mediators[this.methodName];
+    this.messageListener = this._messageListener.bind(this)
 
     this.panel = null;
     this.browser = null;
@@ -83,6 +90,24 @@ function MediatorPanel(window, contentWindowRef, methodName, args, successCB, er
 MediatorPanel.prototype = {
     /* OWA Mediator Agents may subclass the following: */
     
+    /**
+     * Send a message into the web content.
+     */
+    sendMessage: function sendMessage(topic, data) {
+        var messageData = JSON.stringify({
+            topic: topic,
+            data: data
+        });
+        var doc = this.browser.contentDocument;
+        let win = this.browser.contentWindow;
+        var msg = doc.createEvent("MessageEvent");
+        msg.initMessageEvent("message", // type
+                             true, true, // bubble, cancelable
+                             messageData,  // data
+                             this.origin, "", win); // origin, source
+        doc.dispatchEvent(msg);
+    },
+
     /**
      * what the panel gets attached to
      * */
@@ -107,31 +132,41 @@ MediatorPanel.prototype = {
      * include their own apis
      */
     _messageListener: function(event) {
-        if (event.origin != "resource://openwebapps/service")
+        if (event.origin != this.panelOrigin)
             return;
         var msg = JSON.parse(event.data);
-        if (msg.cmd == "result") {
+        var cmd = "on_"+(msg.cmd || msg.topic);
+        if (this[cmd]) {
             try {
-                this.panel.hidePopup();
-                this.successCB(event.data);
-            } catch (e) {
-                dump("message result "+e + "\n");
+                // XXX f1 uses topic
+                this[cmd](msg.data, event);
+            } catch (ex) {
+                dump("ERROR: "+ex+"\n");
+                console.error("Handler of MediatorPanel command", cmd, "failed:", ex, ex.stack);
             }
-        } else if (msg.cmd == "error") {
-            dump("message error "+event.data + "\n");
-            // Show the error box - it might be better to only show it
-            // if the panel is not showing, but OTOH, the panel might
-            // have been closed just as the error was being rendered
-            // in the panel - so for now we always show it.
-            this.showErrorNotification(msg);
-        } else if (msg.cmd == "reconfigure") {
-            dump("services.js: Got a reconfigure event\n");
-            this.updateContent();
         } else {
-            dump("MediatorPanel agent not grok this message: "+msg.cmd+"\n");
+            dump("MediatorPanel agent not grok this message: "+cmd+" from "+event.origin+"\n");
         }
     },
     /* end promised OWA Mediator Agent api */
+    
+    /* postMessage API */
+
+    on_result: function(msg, event) {
+        this.panel.hidePopup();
+        // XXX why pass raw data?
+        this.successCB(event.data);
+    },
+    
+    on_error: function(msg, event) {
+        this.showErrorNotification(msg);
+    },
+    
+    on_reconfigure: function(msg, event) {
+        this.updateContent();
+    },
+    
+    /* end message api */
 
     _createPopupPanel: function() {
         let doc = this.window.document;
@@ -151,7 +186,6 @@ MediatorPanel.prototype = {
         this.panel = panel;
         this.browser = browser;
 
-        this.messageListener = this._messageListener.bind(this)
         // Attach with 'useCapture = true' here since the load event doesn't
         // seem to bubble up to chrome.
         this.browserListener = this._browserLoadListener.bind(this)
@@ -202,10 +236,7 @@ MediatorPanel.prototype = {
 
         // Send an initialize event before touching the iframes etc so the
         // page can delete existing ones etc.
-        this.browser.contentWindow.wrappedJSObject.handleAdminPostMessage(
-            JSON.stringify({cmd: "init",
-                            method: this.methodName,
-                            caller: this.contentWindow.location.href }));
+        this.sendMessage('init');
 
         FFRepoImplService.findServices(this.methodName, function(serviceList) {
             // Make the iframes
@@ -227,21 +258,22 @@ MediatorPanel.prototype = {
             }
   
             // direct call
-            this.browser.contentWindow.wrappedJSObject.handleAdminPostMessage(
-                JSON.stringify({cmd:"setup",
-                                method: this.methodName,
-                                args: this.args,
-                                serviceList: serviceList, 
-                                caller: this.contentWindow.location.href}));
-  
+            this.sendMessage('setup', {
+                method: this.methodName,
+                args: this.args,
+                serviceList: serviceList, 
+                caller: this.contentWindow.location.href
+            });
+
+            // XXX this call is redundant, but would like to know what the
+            // necessity of it was - mixedpuppy
             // direct call
-            this.browser.contentWindow.wrappedJSObject.handleAdminPostMessage(
-                JSON.stringify({cmd:"start_channels"}));
+            //this.browser.contentWindow.wrappedJSObject.handleAdminPostMessage(
+            //    JSON.stringify({cmd:"start_channels"}));
         }.bind(this));
     },
 
     sizeToContent: function (event) {
-        dump("sizeToContent "+this.methodName+"\n");
         if (this.panel.state !== 'open') {
             // if the panel is not open and visible we will not get the correct
             // size for the panel content.  This happens when the idle observer
@@ -290,11 +322,6 @@ MediatorPanel.prototype = {
                 position = 'bottomcenter topright';
             }
             this.panel.openPopup(this.anchor, position, 0, 0, false, false);
-        }
-
-        if (!this.isConfigured) {
-            this.updateContent();
-            this.isConfigured = true;
         }
     },
 
@@ -361,7 +388,6 @@ MediatorPanel.prototype = {
  */
 function serviceInvocationHandler(win)
 {
-    dump("serviceInvocationHandler INIT\n");
     this._window = win;
     this._popups = []; // save references to popups we've created already
 
