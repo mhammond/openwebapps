@@ -193,8 +193,8 @@ Repo = (function() {
     // XXX leave resource urls alone, allowing addons to include builtin default
     // apps
     function normalizeOrigin(origin) {
-        if (origin.indexOf("resource://") == 0)
-            return origin;
+        if (origin.toString().indexOf("resource://") == 0)
+            return origin.toString();
         return URLParse(origin).normalize().originOnly().toString()
     }
 
