@@ -135,20 +135,24 @@ MediatorPanel.prototype = {
 
     _createPopupPanel: function() {
         let data = require("self").data;
-        let contentScriptFiles = [data.url("mediatorapi.js")];
+        let contentScriptFile = [data.url("mediatorapi.js")];
 
         // XXX - update mediator registration to also include
         // additional contentScriptFiles.
         let url = this.mediator && this.mediator.url;
         if (!url) {
             url = require("self").data.url("service2.html");
-            contentScriptFiles.push(data.url("jquery-1.4.4.min.js"));
-            contentScriptFiles.push(data.url("jquery-ui-1.8.10.custom.min.js"));
-            contentScriptFiles.push(data.url("service.js"));
+            contentScriptFile.push(data.url("jquery-1.4.4.min.js"));
+            contentScriptFile.push(data.url("jquery-ui-1.8.10.custom.min.js"));
+            contentScriptFile.push(data.url("service.js"));
+        } else {
+          if (this.mediator.contentScriptFile) {
+            contentScriptFile = contentScriptFile.concat(this.mediator.contentScriptFile);
+          }
         }
         let thePanel = require("panel").Panel({
           contentURL: url,
-          contentScriptFile: contentScriptFiles,
+          contentScriptFile: contentScriptFile,
           width: 484, height: 484
         });
 
