@@ -309,7 +309,7 @@ MediatorPanel.prototype = {
      *
      * show the mediator popup
      */
-    show: function(panelRecord) {
+    show: function() {
         let url = this.mediator && this.mediator.url;
         if (!url) {
           url = require("self").data.url("service2.html");
@@ -580,6 +580,16 @@ serviceInvocationHandler.prototype = {
         console.log("window closed - had", this._popups.length, "popups, now have", newPopups.length);
         this._popups = newPopups;
     },
+    
+    get: function(contentWindowRef, methodName) {
+        let panel;
+        for each (let popupCheck in this._popups) {
+            if (contentWindowRef == popupCheck.contentWindow && methodName == popupCheck.methodName) {
+                return popupCheck;
+            }
+        }
+        return null;
+    },
 
     /**
      * invoke
@@ -588,13 +598,7 @@ serviceInvocationHandler.prototype = {
      */
     invoke: function(contentWindowRef, methodName, args, successCB, errorCB) {
         // Do we already have a panel for this service for this content window?
-        let panel;
-        for each (let popupCheck in this._popups) {
-          if (contentWindowRef == popupCheck.contentWindow && methodName == popupCheck.methodName) {
-            panel = popupCheck;
-            break;
-          }
-        }
+        let panel = this.get(contentWindowRef, methodName);
         // If not, go create one
         if (!panel) {
             let agent = agentCreators[methodName] ? agentCreators[methodName] : MediatorPanel;
