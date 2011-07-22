@@ -157,7 +157,11 @@ MediatorPanel.prototype = {
         // XXX why pass raw data?
         this.successCB(event.data);
     },
-    
+
+    on_close: function(msg, event) {
+        this.panel.hidePopup();
+    },
+        
     on_error: function(msg, event) {
         this.showErrorNotification(msg);
     },
