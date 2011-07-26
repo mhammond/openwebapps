@@ -179,6 +179,9 @@ MediatorPanel.prototype = {
         panel.setAttribute("type", "arrow");
         panel.setAttribute('level', 'parent');
         panel.setAttribute("class", "openwebapps-panel "+this.methodName.replace('.','_'));
+        // uncomment noautohide to make it easy to inspect the panel using
+        // dominspector and other tools
+        //panel.setAttribute('noautohide', 'true');
   
         let browser = doc.createElementNS(XUL_NS, "browser");      
         browser.setAttribute("flex", "1");
