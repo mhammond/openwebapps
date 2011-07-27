@@ -152,6 +152,16 @@ MediatorPanel.prototype = {
     
     /* postMessage API */
 
+    /**
+     * on_result
+     *
+     * the result data is sent back to the content that invoked the service,
+     * this may result in data going back to some 3rd party content.  Eg, a
+     * website invokes the share mechanism via a share button in its content.
+     * the user clicks on the share button in the content, the share panel
+     * appears.  When the user complets the share, the result of that share
+     * is returned via on_result.
+     */
     on_result: function(msg, event) {
         this.panel.hidePopup();
         // XXX why pass raw data?
@@ -217,7 +227,7 @@ MediatorPanel.prototype = {
         // iframe children in the panel...how to stop?
         let self = this;
         this.window.setTimeout(function () {
-            self.sizeToContent(event);
+            self.on_sizeToContent();
         }, 0);
         this.attachMessageListener();
     },
@@ -280,7 +290,7 @@ MediatorPanel.prototype = {
         }.bind(this));
     },
 
-    sizeToContent: function (event) {
+    on_sizeToContent: function () {
         if (this.panel.state !== 'open') {
             // if the panel is not open and visible we will not get the correct
             // size for the panel content.  This happens when the idle observer
