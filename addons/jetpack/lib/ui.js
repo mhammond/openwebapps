@@ -116,17 +116,17 @@ var dashboard = {
         let self = this;
         let data = require("self").data;
         let thePanel = require("panel").Panel({
-            height: 130,
-            width: 800,
+            height: 108,
+            width: 754,
             position: "topcenter bottomright",
             contentURL: data.url("panel.html"),
             contentScriptFile: [data.url("base32.js"),
                                 data.url("jquery-1.4.2.min.js"),
                                 data.url("panel.js") ],
-            onShow: function() {
-                    self._repo.list(function(apps) {
-                        thePanel.port.emit("theList", apps);
-                    });
+
+            onShow: function() { self._repo.list(function(apps) {
+                                 thePanel.port.emit("theList", apps);
+                                });
             }
         });
         
@@ -163,14 +163,15 @@ var dashboard = {
         self._repo.list(function(apps) {
           self._panel.port.emit("theList", apps);
         });
-        let WM = Cc['@mozilla.org/appshell/window-mediator;1']
-            .getService(Ci.nsIWindowMediator);
-        let currentDoc = WM.getMostRecentWindow("navigator:browser").document;
-        var widgetAnchor = currentDoc.getElementById("widget:" + 
+
+        if (show != undefined) {
+            let WM = Cc['@mozilla.org/appshell/window-mediator;1']
+                .getService(Ci.nsIWindowMediator);
+            let currentDoc = WM.getMostRecentWindow("navigator:browser").document;
+            var widgetAnchor = currentDoc.getElementById("widget:" + 
                                               require("self").id + "-openwebapps-toolbar-button");
     
-        if (show != undefined) {
-          self._panel.show(widgetAnchor, "topcenter bottomright");
+            self._panel.show(widgetAnchor, "topcenter bottomright");
         }
       
     },

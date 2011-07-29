@@ -39,6 +39,7 @@
 
 const {Cu, Ci, Cc} = require("chrome"); 
 var {FFRepoImplService} = require("api");
+let {URLParse} = require("openwebapps/urlmatch");
 
 // a mediator is what provides the UI for a service.  It is normal "untrusted"
 // content (although from the user's POV it is somewhat trusted)
@@ -61,7 +62,6 @@ var agentCreators = {}; // key is service name, value is a callable.
  * per mediator, created only when needed.
  */
 function MediatorPanel(window, contentWindowRef, methodName, args, successCB, errorCB) {
-    dump("create mediator panel for "+methodName+"\n");
     this.window = window; // the window the panel is attached to
     this.contentWindow = contentWindowRef; // ???
     this.methodName = methodName;
@@ -73,7 +73,6 @@ function MediatorPanel(window, contentWindowRef, methodName, args, successCB, er
     this.mediator = mediators[this.methodName];
 
     this.panel = null;
-    this.browser = null;
     this.configured = false;
     this.haveAddedListener = false; // is the message handler installed?
     this.isConfigured = false;
@@ -95,43 +94,79 @@ MediatorPanel.prototype = {
         return args;
     },
     /**
-     * handlers for show/hide of the panel
+     * handlers for show/hide of the panel - will be hooked up if a subclass
+     * defines them.
+     * XXX - rename these to _on_panel_shown etc?
      */
     //_panelShown: function() {},
     //_panelHidden: function() {},
 
     /**
-     * postmessage handler
+     * onResult
      *
-     * subclasses may implement a handler to intercept postmessage and
-     * include their own apis
+     * the result data is sent back to the content that invoked the service,
+     * this may result in data going back to some 3rd party content.  Eg, a
+     * website invokes the share mechanism via a share button in its content.
+     * the user clicks on the share button in the content, the share panel
+     * appears.  When the user complets the share, the result of that share
+     * is returned via on_result.
      */
-    _messageListener: function(event) {
-        if (event.origin != "resource://openwebapps/service")
-            return;
-        var msg = JSON.parse(event.data);
-        if (msg.cmd == "result") {
-            try {
-                this.panel.hidePopup();
-                this.successCB(event.data);
-            } catch (e) {
-                dump("message result "+e + "\n");
-            }
-        } else if (msg.cmd == "error") {
-            dump("message error "+event.data + "\n");
-            // Show the error box - it might be better to only show it
-            // if the panel is not showing, but OTOH, the panel might
-            // have been closed just as the error was being rendered
-            // in the panel - so for now we always show it.
-            this.showErrorNotification(msg);
-        } else if (msg.cmd == "reconfigure") {
-            dump("services.js: Got a reconfigure event\n");
-            this.updateContent();
-        } else {
-            dump("MediatorPanel agent not grok this message: "+msg.cmd+"\n");
-        }
+    onResult: function(msg) {
+        this.panel.hidePopup();
+        // XXX why pass raw data?
+        this.successCB(msg.data);
     },
-    /* end promised OWA Mediator Agent api */
+
+    onClose: function(msg) {
+        this.panel.hidePopup();
+    },
+        
+    onError: function(msg) {
+        console.error("mediator reported invocation error:", msg)
+        this.showErrorNotification(msg);
+    },
+
+    onReady: function(msg) {
+        FFRepoImplService.findServices(this.methodName, function(serviceList) {
+          this.panel.port.emit("setup", {
+                          method: this.methodName,
+                          args: this.args,
+                          serviceList: serviceList,
+                          caller: this.contentWindow.location.href
+          });
+        }.bind(this));
+        this.onSizeToContent({});
+    },
+
+    onSizeToContent: function (msg) {
+        dump("sizeToContent "+this.methodName+"\n");
+        if (!this.panel.isShowing) {
+            // if the panel is not open and visible we will not get the correct
+            // size for the panel content.  This happens when the idle observer
+            // first sets src on the browser.
+            // XXX - but doesn't this mean we should setTimeout so it happens
+            // in the future?
+            return;
+        }
+        dump("sizeToContent needs to be reimplemented!!!!!!!\n");
+        return;
+        let doc = this.browser.contentDocument;
+        var body = doc ? doc.getElementsByTagName('body')[0] : null;
+        if (!body) {
+            return;
+        }
+        this.browser.style.width = body.scrollWidth + "px";
+        this.browser.style.height = body.scrollHeight + "px";
+    },
+
+    attachHandlers: function() {    
+        this.panel.port.on("result", this.onResult.bind(this));
+        this.panel.port.on("error", this.onError.bind(this));
+        this.panel.port.on("close", this.onClose.bind(this));
+        this.panel.port.on("ready", this.onReady.bind(this));
+        this.panel.port.on("sizeToContent", this.onSizeToContent.bind(this));
+    },
+    /* end message api */
 
     _createPopupPanel: function() {
         let data = require("self").data;
@@ -156,14 +191,6 @@ MediatorPanel.prototype = {
           width: 484, height: 484
         });
 
-/***
-        this.messageListener = this._messageListener.bind(this)
-        // Attach with 'useCapture = true' here since the load event doesn't
-        // seem to bubble up to chrome.
-        this.browserListener = this._browserLoadListener.bind(this)
-        browser.addEventListener("load", this.browserListener, true);
-
-***/
         if (this._panelShown) {
             thePanel.port.on("show", this._panelShown);
         }
@@ -171,88 +198,6 @@ MediatorPanel.prototype = {
             thePanel.port.on("hide", this._panelHidden);
         }
         this.panel = thePanel;
-    },
-
-    _browserLoadListener: function(event) {
-        // XXX this is currently receiving load events for the panel and any
-        // iframe children in the panel...how to stop?
-        let self = this;
-        this.window.setTimeout(function () {
-            self.sizeToContent(event);
-        }, 0);
-        this.attachMessageListener();
-    },
-    
-    attachMessageListener: function() {
-        let win = this.browser.contentWindow;
-        win.addEventListener("message", this.messageListener, false);
-    },
-    
-    /**
-     * updateContent
-     *
-     * This resets the service iframes for the mediator
-     */
-    configureContent: function() {
-        this.hideErrorNotification();
-        // We are going to inject into our iframe (which is pointed at service.html).
-        // It needs to know:
-        // 1. What method is being invoked (and maybe some nice explanatory text)
-        // 2. Which services can provide that method, along with their icons and iframe URLs
-        // 3. Where to return messages to once it gets confirmation (that would be this)
-        let thePanel = this.panel;
-        let self = this;
-  
-        // Ready to go: attach our response listeners
-        thePanel.port.on("result", function(msg) {
-          try {
-            thePanel.hidePopup();
-            successCB(event.data);
-          } catch (e) {
-            dump(e + "\n");
-          }
-        });
-        thePanel.port.on("error", function(msg) {
-          console.error("mediator reported invocation error:", msg)
-        });
-        thePanel.port.on("ready", function() {
-          FFRepoImplService.findServices(self.methodName, function(serviceList) {
-            thePanel.port.emit("setup", {
-                            method: self.methodName,
-                            args: self.args,
-                            serviceList: serviceList,
-                            caller: self.contentWindow.location.href
-            });
-          });
-        });
-    },
-
-    sizeToContent: function (event) {
-        dump("sizeToContent "+this.methodName+"\n");
-        if (!this.panel.isShowing) {
-            // if the panel is not open and visible we will not get the correct
-            // size for the panel content.  This happens when the idle observer
-            // first sets src on the browser.
-            return;
-        }
-        let doc = this.browser.contentDocument;
-        let wrapper;
-        if (!doc) {
-            return;
-        }
-        if (this.mediator && this.mediator.content)
-            wrapper = doc.getElementById(this.mediator.content);
-        if (!wrapper)
-            // try the body element
-            wrapper = doc.getElementsByTagName('body')[0];
-        if (!wrapper)
-            // XXX old fallback
-            wrapper = doc.getElementById('wrapper');
-        if (!wrapper) {
-            return;
-        }
-        this.browser.style.width = wrapper.scrollWidth + "px";
-        this.browser.style.height = wrapper.scrollHeight + "px";
     },
 
     /**
@@ -331,7 +276,6 @@ MediatorPanel.prototype = {
  */
 function serviceInvocationHandler(win)
 {
-    dump("serviceInvocationHandler INIT\n");
     this._window = win;
     this._popups = []; // save references to popups we've created already
 
@@ -432,10 +376,6 @@ serviceInvocationHandler.prototype = {
         });
     },
 
-
-    // FIXME: This should all be replaced with postMessage passing.
-    // Until we get that working we are invoking functions directly.
-    
     // when an app registers a service handler
     registerServiceHandler: function(contentWindowRef, activity, message, func) {
         // check that this is indeed an app
@@ -472,7 +412,6 @@ serviceInvocationHandler.prototype = {
         });
     },
 
-    // invoke below should really be named startActivity or something
     // this call means to invoke a specific call within a given app
     invokeService: function(contentWindow, activity, message, args, cb, cberr, privileged) {
         FFRepoImplService.getAppByUrl(contentWindow.location, function(app) {
@@ -542,6 +481,16 @@ serviceInvocationHandler.prototype = {
         console.log("window closed - had", this._popups.length, "popups, now have", newPopups.length);
         this._popups = newPopups;
     },
+    
+    get: function(contentWindowRef, methodName) {
+        let panel;
+        for each (let popupCheck in this._popups) {
+            if (contentWindowRef == popupCheck.contentWindow && methodName == popupCheck.methodName) {
+                return popupCheck;
+            }
+        }
+        return null;
+    },
 
     /**
      * invoke
@@ -551,25 +500,20 @@ serviceInvocationHandler.prototype = {
     invoke: function(contentWindowRef, methodName, args, successCB, errorCB) {
       try {
         // Do we already have a panel for this service for this content window?
-        let thePanelRecord;
-        for each (let popupCheck in this._popups) {
-          if (contentWindowRef == popupCheck.contentWindow && methodName == popupCheck.methodName) {
-            thePanelRecord = popupCheck;
-            break;
-          }
-        }
+        let panel = this.get(contentWindowRef, methodName);
         // If not, go create one
-        if (!thePanelRecord) {
+        if (!panel) {
             let agent = agentCreators[methodName] ? agentCreators[methodName] : MediatorPanel;
-            thePanelRecord = new agent(this._window, contentWindowRef, methodName, args, successCB, errorCB);
-            thePanelRecord.configureContent();
-
-            this._popups.push(thePanelRecord);
+            panel = new agent(this._window, contentWindowRef, methodName, args, successCB, errorCB);
+            // attach our response listeners
+            panel.attachHandlers();
+            this._popups.push(panel);
             // add an unload listener so we can nuke this popup info as the window closes.
             contentWindowRef.addEventListener("unload",
                                this.removePanelsForWindow.bind(this), true);
         }
-        thePanelRecord.show();
+        panel.hideErrorNotification();
+        panel.show();
       } catch (e) {
         dump(e + "\n");
         dump(e.stack + "\n");
