@@ -145,7 +145,7 @@ MediatorPanel.prototype = {
                 console.error("Handler of MediatorPanel command", cmd, "failed:", ex, ex.stack);
             }
         } else {
-            dump("MediatorPanel agent not grok this message: "+cmd+" from "+event.origin+"\n");
+            //dump("MediatorPanel agent not grok this message: "+cmd+" from "+event.origin+"\n");
         }
     },
     /* end promised OWA Mediator Agent api */
