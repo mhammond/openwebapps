@@ -295,26 +295,17 @@ MediatorPanel.prototype = {
             // if the panel is not open and visible we will not get the correct
             // size for the panel content.  This happens when the idle observer
             // first sets src on the browser.
+            // XXX - but doesn't this mean we should setTimeout so it happens
+            // in the future?
             return;
         }
         let doc = this.browser.contentDocument;
-        let wrapper;
-        if (!doc) {
+        var body = doc ? doc.getElementsByTagName('body')[0] : null;
+        if (!body) {
             return;
         }
-        if (this.mediator && this.mediator.content)
-            wrapper = doc.getElementById(this.mediator.content);
-        if (!wrapper)
-            // try the body element
-            wrapper = doc.getElementsByTagName('body')[0];
-        if (!wrapper)
-            // XXX old fallback
-            wrapper = doc.getElementById('wrapper');
-        if (!wrapper) {
-            return;
-        }
-        this.browser.style.width = wrapper.scrollWidth + "px";
-        this.browser.style.height = wrapper.scrollHeight + "px";
+        this.browser.style.width = body.scrollWidth + "px";
+        this.browser.style.height = body.scrollHeight + "px";
     },
 
     /**
