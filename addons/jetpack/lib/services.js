@@ -135,28 +135,10 @@ MediatorPanel.prototype = {
                           caller: this.contentWindow.location.href
           });
         }.bind(this));
-        this.onSizeToContent({});
     },
 
-    onSizeToContent: function (msg) {
-        dump("sizeToContent "+this.methodName+"\n");
-        if (!this.panel.isShowing) {
-            // if the panel is not open and visible we will not get the correct
-            // size for the panel content.  This happens when the idle observer
-            // first sets src on the browser.
-            // XXX - but doesn't this mean we should setTimeout so it happens
-            // in the future?
-            return;
-        }
-        dump("sizeToContent needs to be reimplemented!!!!!!!\n");
-        return;
-        let doc = this.browser.contentDocument;
-        var body = doc ? doc.getElementsByTagName('body')[0] : null;
-        if (!body) {
-            return;
-        }
-        this.browser.style.width = body.scrollWidth + "px";
-        this.browser.style.height = body.scrollHeight + "px";
+    onSizeToContent: function (args) {
+        this.panel.resize(args.width, args.height);
     },
 
     attachHandlers: function() {    

@@ -125,6 +125,20 @@ window.navigator.apps.mediation.ready = function(invocationHandler) {
     // event per app.
 };
 
+window.navigator.apps.mediation.emit = function(event, args) {
+    // A hack for sizeToContent - as the panel doesn't expose the window
+    // object for its iframe, we need to calculate it here.
+    if (event === "sizeToContent" && !args) {
+        let body = document.getElementsByTagName('body')[0];
+        if (body) {
+            args = {width: body.scrollWidth,
+                    height: body.scrollHeight
+            };
+        }
+    }
+    self.port.emit(event, args)
+}
+
 
 window.navigator.apps.mediation.invokeService = function(iframe, method, activity, arguments, callback) {
     function callbackShim(result) {
