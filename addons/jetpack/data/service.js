@@ -143,7 +143,9 @@ function confirm()
     );
 }
 
-document.getElementById("confirmclicker").onclick = confirm;
+$(function() {
+    document.getElementById("confirmclicker").onclick = confirm;
+});
 
 window.navigator.apps.mediation.ready(
     function(method, args, services) {

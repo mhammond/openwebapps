@@ -20,6 +20,7 @@ function Service(svcinfo, iframe) {
     this.iframe = iframe;
     this._onHandlers = {}
 };
+unsafeWindow.Service = Service;
 
 Service.prototype = {
     call: function(activity, arguments, cb, cberr) {
@@ -91,6 +92,7 @@ window.navigator.apps.mediation.ready = function(invocationHandler) {
     let setupHandler = function(msg) {
         console.log("setup event has", msg.serviceList.length, "services");
         let services = [];
+        let document = unsafeWindow.document;
         for (var i = 0; i < msg.serviceList.length; i++) {
             var svc = msg.serviceList[i];
             let iframe = document.createElement("iframe");
@@ -125,6 +127,8 @@ window.navigator.apps.mediation.ready = function(invocationHandler) {
     // event per app.
 };
 
+unsafeWindow.navigator.apps.mediation.ready = window.navigator.apps.mediation.ready;
+
 window.navigator.apps.mediation.emit = function(event, args) {
     // A hack for sizeToContent - as the panel doesn't expose the window
     // object for its iframe, we need to calculate it here.
@@ -139,6 +143,7 @@ window.navigator.apps.mediation.emit = function(event, args) {
     self.port.emit(event, args)
 }
 
+unsafeWindow.navigator.apps.mediation.emit = window.navigator.apps.mediation.emit;
 
 window.navigator.apps.mediation.invokeService = function(iframe, method, activity, arguments, callback) {
     function callbackShim(result) {
@@ -150,3 +155,5 @@ window.navigator.apps.mediation.invokeService = function(iframe, method, activit
     // Need to use unsafeWindow here for some reason.
     unsafeWindow.navigator.apps.mediation._invokeService(iframe.contentWindow, method, activity, arguments, callbackShim);
 };
+
+unsafeWindow.navigator.apps.mediation.invokeService = window.navigator.apps.mediation.invokeService;

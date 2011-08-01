@@ -170,6 +170,7 @@ MediatorPanel.prototype = {
         let thePanel = require("panel").Panel({
           contentURL: url,
           contentScriptFile: contentScriptFile,
+          contentScriptWhen: "start",
           width: 484, height: 484
         });
 
