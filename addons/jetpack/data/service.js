@@ -63,9 +63,6 @@ function handleSetup(method, args, serviceList)
         var svcTabImg = document.createElement("img");
 
         var icon = svc.getIconForSize(48);
-        if (!(icon.indexOf("data:") == 0)) {
-            icon = svc.launch_url + icon;
-        }
         svcTabImg.setAttribute("src", icon);
         svcTabImg.setAttribute("style", "width:48px;height:48px;vertical-align:middle");
         svcTabLink.appendChild(svcTabImg);

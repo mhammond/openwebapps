@@ -37,7 +37,7 @@ Service.prototype = {
 
     // Get the closest icon that is equal to or larger than the requested size,
     // or the biggest icon below that if needed.
-    getIconForSize: function (targetSize) {
+    _getIconForSize: function (targetSize) {
         let minifest = this.app.manifest;
         if (minifest && minifest.icons) {
             var bestFit = 0;
@@ -55,6 +55,14 @@ Service.prototype = {
             if (biggestFallback !== 0) return minifest.icons[biggestFallback];
         }
         return "default_app.png";
+    },
+
+    getIconForSize: function(targetSize) {
+        let icon = this._getIconForSize(targetSize);
+        if (!(icon.indexOf("data:") == 0)) {
+            icon = this.app.launch_url + icon;
+        }
+        return icon;
     },
 
     // A poor mans event mechanism - 'ready' is about the only event used..
