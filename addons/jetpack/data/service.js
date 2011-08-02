@@ -128,6 +128,7 @@ var addServicesService = new Service(
 
 function confirm()
 {
+    var emit = window.navigator.apps.mediation.emit;
     var selected = $("#services").tabs('option', 'selected'); // => 0
     var service = gServiceList[selected].call("confirm", {},
         function(status) {
@@ -135,10 +136,10 @@ function confirm()
                 app:iframe.contentWindow.location.href,
                 result:"ok"
             };
-            self.port.emit("result", messageData);
+            emit("result", messageData);
         },
         function(err) {
-            self.port.emit("error", err);
+            emit("error", err);
         }
     );
 }

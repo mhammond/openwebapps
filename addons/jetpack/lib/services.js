@@ -159,9 +159,6 @@ MediatorPanel.prototype = {
         let url = this.mediator && this.mediator.url;
         if (!url) {
             url = require("self").data.url("service2.html");
-            contentScriptFile.push(data.url("jquery-1.4.4.min.js"));
-            contentScriptFile.push(data.url("jquery-ui-1.8.10.custom.min.js"));
-            contentScriptFile.push(data.url("service.js"));
         } else {
           if (this.mediator.contentScriptFile) {
             contentScriptFile = contentScriptFile.concat(this.mediator.contentScriptFile);
