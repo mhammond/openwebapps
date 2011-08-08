@@ -112,13 +112,13 @@ MediatorPanel.prototype = {
      * is returned via on_result.
      */
     onResult: function(msg) {
-        this.panel.hidePopup();
+        this.panel.hide();
         // XXX why pass raw data?
         this.successCB(msg.data);
     },
 
     onClose: function(msg) {
-        this.panel.hidePopup();
+        this.panel.hide();
     },
         
     onError: function(msg) {
@@ -172,10 +172,10 @@ MediatorPanel.prototype = {
         });
 
         if (this._panelShown) {
-            thePanel.port.on("show", this._panelShown);
+            thePanel.port.on("show", this._panelShown.bind(this));
         }
         if (this._panelHidden) {
-            thePanel.port.on("hide", this._panelHidden);
+            thePanel.port.on("hide", this._panelHidden.bind(this));
         }
         this.panel = thePanel;
     },
