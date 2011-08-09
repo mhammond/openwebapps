@@ -451,9 +451,7 @@ serviceInvocationHandler.prototype = {
           if (popupCheck.contentWindow === evt.currentTarget) {
             // this popup record must die.
             let nukePanel = popupCheck.panel;
-            if (nukePanel.isShowing) {
-              nukePanel.hide();
-            }
+            nukePanel.destroy();
           } else {
             newPopups.push(popupCheck);
           }
