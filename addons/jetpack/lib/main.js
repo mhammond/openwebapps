@@ -119,6 +119,7 @@ function openwebapps(win, getUrlCB)
             if (e.target.pinned) return;
 
             let browser = self._window.gBrowser.getBrowserForTab(e.target);
+            if (!browser || !browser.currentURI) return;
             let origin = url.URLParse(browser.currentURI.spec)
                 .originOnly().toString();
 
