@@ -172,10 +172,10 @@ MediatorPanel.prototype = {
         });
 
         if (this._panelShown) {
-            thePanel.port.on("show", this._panelShown.bind(this));
+            thePanel.on("show", this._panelShown.bind(this));
         }
         if (this._panelHidden) {
-            thePanel.port.on("hide", this._panelHidden.bind(this));
+            thePanel.on("hide", this._panelHidden.bind(this));
         }
         this.panel = thePanel;
     },
