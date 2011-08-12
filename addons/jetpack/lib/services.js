@@ -461,25 +461,13 @@ serviceInvocationHandler.prototype = {
         this._popups = newPopups;
     },
     
-    get: function(contentWindowRef, methodName) {
+    get: function(contentWindowRef, methodName, args, successCB, errorCB) {
         let panel;
         for each (let popupCheck in this._popups) {
             if (contentWindowRef == popupCheck.contentWindow && methodName == popupCheck.methodName) {
                 return popupCheck;
             }
         }
-        return null;
-    },
-
-    /**
-     * invoke
-     *
-     * show the panel for a mediator, creating one if necessary.
-     */
-    invoke: function(contentWindowRef, methodName, args, successCB, errorCB) {
-      try {
-        // Do we already have a panel for this service for this content window?
-        let panel = this.get(contentWindowRef, methodName);
         // If not, go create one
         if (!panel) {
             let agent = agentCreators[methodName] ? agentCreators[methodName] : MediatorPanel;
@@ -491,6 +479,18 @@ serviceInvocationHandler.prototype = {
             contentWindowRef.addEventListener("unload",
                                this.removePanelsForWindow.bind(this), true);
         }
+        return panel;
+    },
+
+    /**
+     * invoke
+     *
+     * show the panel for a mediator, creating one if necessary.
+     */
+    invoke: function(contentWindowRef, methodName, args, successCB, errorCB) {
+      try {
+        // Do we already have a panel for this service for this content window?
+        let panel = this.get(contentWindowRef, methodName, args, successCB, errorCB);
         panel.hideErrorNotification();
         panel.show();
       } catch (e) {
