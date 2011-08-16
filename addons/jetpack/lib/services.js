@@ -475,23 +475,20 @@ serviceInvocationHandler.prototype = {
     },
     
     get: function(contentWindowRef, methodName, args, successCB, errorCB) {
-        let panel;
         for each (let popupCheck in this._popups) {
             if (contentWindowRef == popupCheck.contentWindow && methodName == popupCheck.methodName) {
                 return popupCheck;
             }
         }
-        // If not, go create one
-        if (!panel) {
-            let agent = agentCreators[methodName] ? agentCreators[methodName] : MediatorPanel;
-            panel = new agent(this._window, contentWindowRef, methodName, args, successCB, errorCB);
-            // attach our response listeners
-            panel.attachHandlers();
-            this._popups.push(panel);
-            // add an unload listener so we can nuke this popup info as the window closes.
-            contentWindowRef.addEventListener("unload",
-                               this.removePanelsForWindow.bind(this), true);
-        }
+        // if we didn't find it, create it
+        let agent = agentCreators[methodName] ? agentCreators[methodName] : MediatorPanel;
+        let panel = new agent(this._window, contentWindowRef, methodName, args, successCB, errorCB);
+        // attach our response listeners
+        panel.attachHandlers();
+        this._popups.push(panel);
+        // add an unload listener so we can nuke this popup info as the window closes.
+        contentWindowRef.addEventListener("unload",
+                           this.removePanelsForWindow.bind(this), true);
         return panel;
     },
 
