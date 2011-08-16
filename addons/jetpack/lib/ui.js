@@ -141,6 +141,17 @@ var dashboard = {
             thePanel.hide();
         });
 
+        //load and save dash state, just using a constant string for now
+        thePanel.port.on("loadState", function(arg) {
+          self._repo.loadState("owadock", function(state) {
+            thePanel.port.emit("theState", state);
+          });
+        });
+        
+        thePanel.port.on("saveState", function(arg) {
+          self._repo.saveState("owadock", arg);
+        });
+
         this._panel = thePanel;
 
         this._widget = widgets.Widget({

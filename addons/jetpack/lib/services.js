@@ -77,7 +77,6 @@ function MediatorPanel(window, contentWindowRef, methodName, args, successCB, er
     this.configured = false;
     this.haveAddedListener = false; // is the message handler installed?
     this.isConfigured = false;
-    this.invocationid = nextinvocationid++;
 
     this._createPopupPanel();
 }
@@ -115,9 +114,8 @@ MediatorPanel.prototype = {
      */
     onResult: function(msg) {
         this.panel.hide();
-        // XXX why pass raw data?
         if (this.successCB)
-            this.successCB(msg.data);
+            this.successCB(msg);
     },
 
     onClose: function(msg) {
@@ -135,8 +133,7 @@ MediatorPanel.prototype = {
                           method: this.methodName,
                           args: this.args,
                           serviceList: serviceList,
-                          caller: this.contentWindow.location.href,
-                          invocationid: this.invocationid
+                          caller: this.contentWindow.location.href
           });
         }.bind(this));
     },
