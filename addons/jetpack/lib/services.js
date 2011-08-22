@@ -116,7 +116,7 @@ MediatorPanel.prototype = {
     onResult: function(msg) {
         this.panel.hide();
         if (this.successCB)
-            this.successCB(msg.data);
+            this.successCB(msg);
     },
 
     onClose: function(msg) {
@@ -156,6 +156,7 @@ MediatorPanel.prototype = {
     _createPopupPanel: function() {
         let data = require("self").data;
         let contentScriptFile = [data.url("mediatorapi.js")];
+        let contentScript;
 
         // XXX - update mediator registration to also include
         // additional contentScriptFiles.
@@ -166,10 +167,12 @@ MediatorPanel.prototype = {
           if (this.mediator.contentScriptFile) {
             contentScriptFile = contentScriptFile.concat(this.mediator.contentScriptFile);
           }
+          contentScript = this.mediator.contentScript;
         }
         let thePanel = require("panel").Panel({
           contentURL: url,
           contentScriptFile: contentScriptFile,
+          contentScript: contentScript,
           contentScriptWhen: "start",
           width: 484, height: 484
         });
