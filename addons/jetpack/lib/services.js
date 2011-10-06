@@ -295,7 +295,7 @@ MediatorPanel.prototype = {
       }
       contentScript = this.mediator.contentScript;
     }
-    let thePanel = require("panel").Panel({
+    let thePanel = require("./tab-panel").Panel({
       contentURL: url,
       contentScriptFile: contentScriptFile,
       contentScript: contentScript,
